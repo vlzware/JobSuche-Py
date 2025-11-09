@@ -1,0 +1,3 @@
+"""
+JobSuche-Py Test Suite
+"""

@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+# Environment variables
+.env
+
+# Personal scripts (excluded to avoid publishing personal info)
+my_*.sh
+my_*.py
+PERSONAL*.md
+
+# Personal category definitions (use categories.example.yaml as template)
+categories.yaml
+
+# Personal prompt templates (use prompts.example.yaml as template)
+prompts.yaml
+
+# CV files
+cv.md
+cv.txt
+cv.pdf
+CV.*
+resume.*
+lebenslauf.*
+
+# User-specific configuration
+user_config.yaml
+personal_*.yaml
+/.coverage
+/coverage.json
+/perfect_job_description.txt

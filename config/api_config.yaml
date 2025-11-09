@@ -1,0 +1,26 @@
+# API Configuration
+# Contains all API-related settings including endpoints, headers, timeouts, and delays
+
+arbeitsagentur:
+  base_url: "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+  headers:
+    user_agent: "Jobsuche/2.9.2 (de.arbeitsagentur.jobboerse; build:1077; iOS 15.1.0) Alamofire/5.4.4"
+    host: "rest.arbeitsagentur.de"
+    api_key: "jobboerse-jobsuche"
+  params:
+    angebotsart: "1"
+    pav: "false"
+
+openrouter:
+  endpoint: "https://openrouter.ai/api/v1/chat/completions"
+
+timeouts:
+  api_request: 30
+  arbeitsagentur_details: 10
+  external_url: 15
+  classification: 30
+  batch_classification: 60
+  mega_batch_classification: 120
+
+delays:
+  scraping: 1.0

@@ -1,0 +1,18 @@
+# Paths Configuration
+# Contains all file paths and directory names used by the application
+
+directories:
+  searches: "data/searches"
+
+files:
+  categories: "categories.yaml"
+  prompts: "prompts.yaml"
+  debug:
+    raw_api_response: "01_raw_api_response.json"
+    scraped_jobs: "02_scraped_jobs.json"
+    llm_request: "03_llm_request.txt"
+    llm_response: "04_llm_response.txt"
+  output:
+    classified_jobs: "jobs_classified.json"
+    analysis_report: "analysis_report.txt"
+    csv_export: "jobs_all.csv"

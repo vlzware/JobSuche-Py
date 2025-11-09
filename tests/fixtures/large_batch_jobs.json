@@ -1,0 +1,277 @@
+[
+  {
+    "titel": "Senior Python Entwickler",
+    "refnr": "BATCH-001",
+    "text": "Wir suchen einen erfahrenen Python-Entwickler für unser Backend-Team. Du arbeitest mit Python 3.11, Django REST Framework, FastAPI und pytest. Kenntnisse in PostgreSQL und Redis sind von Vorteil."
+  },
+  {
+    "titel": "Java Software Engineer",
+    "refnr": "BATCH-002",
+    "text": "Für unser Enterprise-Team suchen wir einen Java-Entwickler. Du arbeitest mit Java 17, Spring Boot, Hibernate und Maven. Erfahrung mit Microservices-Architekturen ist wichtig."
+  },
+  {
+    "titel": "DevOps Engineer Kubernetes",
+    "refnr": "BATCH-003",
+    "text": "Wir suchen einen DevOps-Spezialisten für unsere Cloud-Infrastruktur. Du verwaltest Kubernetes-Cluster, arbeitest mit Terraform, Helm und ArgoCD. CI/CD-Pipelines mit GitLab sind dein täglich Brot."
+  },
+  {
+    "titel": "Scrum Master",
+    "refnr": "BATCH-004",
+    "text": "Scrum Master für agile Softwareentwicklung gesucht. Du führst Daily Standups, Sprint Planning und Retrospektiven durch. Zertifizierung als Certified Scrum Master (CSM) ist erforderlich."
+  },
+  {
+    "titel": "React Frontend Developer",
+    "refnr": "BATCH-005",
+    "text": "Frontend-Entwickler für moderne Webanwendungen gesucht. Du arbeitest mit React 18, TypeScript, Next.js und Tailwind CSS. Erfahrung mit State Management (Redux, Zustand) ist wichtig."
+  },
+  {
+    "titel": "Python Data Scientist",
+    "refnr": "BATCH-006",
+    "text": "Data Scientist mit Python-Kenntnissen gesucht. Du arbeitest mit pandas, numpy, scikit-learn und TensorFlow. Erfahrung mit Jupyter Notebooks und Datenvisualisierung (matplotlib, seaborn) ist erforderlich."
+  },
+  {
+    "titel": "Java Backend Architect",
+    "refnr": "BATCH-007",
+    "text": "Senior Java-Architekt für Microservices-Architektur gesucht. Du designst Java-basierte Systeme mit Spring Cloud, Kafka und gRPC. Erfahrung mit Domain-Driven Design ist wichtig."
+  },
+  {
+    "titel": "AWS Cloud Engineer",
+    "refnr": "BATCH-008",
+    "text": "Cloud Engineer für AWS-Infrastruktur gesucht. Du arbeitest mit EC2, S3, Lambda, ECS und CloudFormation. Terraform-Kenntnisse und AWS-Zertifizierung sind von Vorteil."
+  },
+  {
+    "titel": "Product Owner",
+    "refnr": "BATCH-009",
+    "text": "Product Owner für agiles Produktmanagement gesucht. Du arbeitest eng mit Stakeholdern zusammen, priorisierst das Product Backlog und definierst User Stories. Scrum und SAFe-Erfahrung erforderlich."
+  },
+  {
+    "titel": "Vue.js Entwickler",
+    "refnr": "BATCH-010",
+    "text": "Frontend-Entwickler mit Vue.js-Expertise gesucht. Du arbeitest mit Vue 3, Composition API, Pinia und Vite. Kenntnisse in TypeScript und UI-Frameworks wie Vuetify sind wichtig."
+  },
+  {
+    "titel": "Python Automatisierungsingenieur",
+    "refnr": "BATCH-011",
+    "text": "Automatisierungsingenieur für Python-Scripting gesucht. Du automatisierst Prozesse mit Python, Ansible und Selenium. Erfahrung mit REST APIs und Batch-Verarbeitung ist erforderlich."
+  },
+  {
+    "titel": "Java Spring Boot Entwickler",
+    "refnr": "BATCH-012",
+    "text": "Spring Boot Entwickler für REST APIs gesucht. Du arbeitest mit Java, Spring Boot, Spring Security und JPA. Kenntnisse in Docker und Microservices sind von Vorteil."
+  },
+  {
+    "titel": "Docker & Container Spezialist",
+    "refnr": "BATCH-013",
+    "text": "Container-Spezialist für Docker und Kubernetes gesucht. Du erstellst Dockerfiles, optimierst Images und managst Container-Orchestrierung. Erfahrung mit Docker Compose und Registries wichtig."
+  },
+  {
+    "titel": "Agile Coach",
+    "refnr": "BATCH-014",
+    "text": "Agile Coach für Organisationstransformation gesucht. Du coachst Teams in Scrum, Kanban und SAFe. Erfahrung mit Change Management und agilen Skalierungsframeworks ist erforderlich."
+  },
+  {
+    "titel": "Angular Entwickler",
+    "refnr": "BATCH-015",
+    "text": "Angular-Entwickler für Enterprise-Anwendungen gesucht. Du arbeitest mit Angular 16+, RxJS, NgRx und Angular Material. TypeScript und REST-Integration sind deine Stärken."
+  },
+  {
+    "titel": "Python Flask Developer",
+    "refnr": "BATCH-016",
+    "text": "Entwickler für Python Flask APIs gesucht. Du erstellst RESTful Services mit Flask, SQLAlchemy und Marshmallow. Kenntnisse in JWT-Authentication und API-Design sind wichtig."
+  },
+  {
+    "titel": "Kotlin Backend Developer",
+    "refnr": "BATCH-017",
+    "text": "Backend-Entwickler mit Kotlin-Expertise gesucht. Du arbeitest mit Kotlin, Spring Boot und Ktor. Erfahrung mit der JVM und funktionaler Programmierung ist von Vorteil."
+  },
+  {
+    "titel": "Terraform Infrastructure Engineer",
+    "refnr": "BATCH-018",
+    "text": "Infrastructure Engineer für Terraform IaC gesucht. Du automatisierst Cloud-Infrastruktur mit Terraform, verwaltest State Management und schreibst Module. AWS oder Azure Erfahrung wichtig."
+  },
+  {
+    "titel": "Kanban Facilitator",
+    "refnr": "BATCH-019",
+    "text": "Kanban Facilitator für Flow-Optimierung gesucht. Du implementierst Kanban-Boards, optimierst WIP-Limits und führst Retrospektiven durch. Erfahrung mit Lean-Prinzipien ist erforderlich."
+  },
+  {
+    "titel": "JavaScript Fullstack Developer",
+    "refnr": "BATCH-020",
+    "text": "Fullstack-Entwickler mit JavaScript-Fokus gesucht. Du arbeitest sowohl Frontend (React, Vue) als auch Backend (Node.js, Express). TypeScript und MongoDB-Kenntnisse sind wichtig."
+  },
+  {
+    "titel": "Django Developer",
+    "refnr": "BATCH-021",
+    "text": "Django-Entwickler für Web-Anwendungen gesucht. Du arbeitest mit Django 4.x, Django ORM, Celery und Redis. Erfahrung mit Django REST Framework und PostgreSQL ist erforderlich."
+  },
+  {
+    "titel": "Scala Backend Engineer",
+    "refnr": "BATCH-022",
+    "text": "Scala-Entwickler für funktionale Programmierung gesucht. Du arbeitest mit Scala, Akka, Play Framework und cats/ZIO. Erfahrung mit reaktiven Systemen ist wichtig."
+  },
+  {
+    "titel": "Ansible Automation Specialist",
+    "refnr": "BATCH-023",
+    "text": "Automation Specialist für Ansible gesucht. Du schreibst Playbooks, Roles und Collections. Erfahrung mit Configuration Management und Linux-Administration ist erforderlich."
+  },
+  {
+    "titel": "SAFe Release Train Engineer",
+    "refnr": "BATCH-024",
+    "text": "Release Train Engineer für SAFe-Skalierung gesucht. Du koordinierst Agile Release Trains, facilitierst PI Planning und trackst Programm-Inkremente. SAFe RTE-Zertifizierung erforderlich."
+  },
+  {
+    "titel": "Svelte Frontend Developer",
+    "refnr": "BATCH-025",
+    "text": "Frontend-Entwickler mit Svelte-Expertise gesucht. Du arbeitest mit Svelte, SvelteKit und Tailwind CSS. Erfahrung mit modernen Build-Tools (Vite) ist von Vorteil."
+  },
+  {
+    "titel": "FastAPI Python Developer",
+    "refnr": "BATCH-026",
+    "text": "Python-Entwickler für FastAPI Services gesucht. Du erstellst asynchrone APIs mit FastAPI, Pydantic und SQLAlchemy. Kenntnisse in async/await und Type Hints sind wichtig."
+  },
+  {
+    "titel": "Go Backend Engineer",
+    "refnr": "BATCH-027",
+    "text": "Backend-Entwickler mit Go-Expertise gesucht. Du arbeitest mit Go, Gin/Echo Frameworks und gRPC. Erfahrung mit Concurrency-Patterns und Microservices ist erforderlich."
+  },
+  {
+    "titel": "Jenkins CI/CD Engineer",
+    "refnr": "BATCH-028",
+    "text": "CI/CD Engineer für Jenkins Pipelines gesucht. Du erstellst Jenkinsfiles, managst Build-Agenten und integrierst Tools. Groovy-Kenntnisse und Pipeline-as-Code Erfahrung wichtig."
+  },
+  {
+    "titel": "Extreme Programming Coach",
+    "refnr": "BATCH-029",
+    "text": "XP Coach für technische Praktiken gesucht. Du coachst Teams in Test-Driven Development, Pair Programming und Continuous Integration. Erfahrung mit agilen Engineering-Praktiken erforderlich."
+  },
+  {
+    "titel": "Ember.js Developer",
+    "refnr": "BATCH-030",
+    "text": "Ember.js-Entwickler für SPA-Entwicklung gesucht. Du arbeitest mit Ember.js, Ember Data und Ember CLI. Kenntnisse in JavaScript und Web Components sind wichtig."
+  },
+  {
+    "titel": "Python Machine Learning Engineer",
+    "refnr": "BATCH-031",
+    "text": "ML Engineer mit Python gesucht. Du arbeitest mit scikit-learn, PyTorch, MLflow und Kubeflow. Erfahrung mit Model Training, Deployment und Monitoring ist erforderlich."
+  },
+  {
+    "titel": "C# .NET Developer",
+    "refnr": "BATCH-032",
+    "text": "C# Entwickler für .NET Anwendungen gesucht. Du arbeitest mit C#, .NET 7, ASP.NET Core und Entity Framework. Erfahrung mit Azure ist von Vorteil."
+  },
+  {
+    "titel": "GitLab CI Specialist",
+    "refnr": "BATCH-033",
+    "text": "CI/CD Spezialist für GitLab gesucht. Du erstellst .gitlab-ci.yml Pipelines, managst Runners und optimierst Build-Zeiten. GitOps-Erfahrung ist wichtig."
+  },
+  {
+    "titel": "Lean Portfolio Manager",
+    "refnr": "BATCH-034",
+    "text": "Portfolio Manager für Lean-Agile-Transformation gesucht. Du managst strategische Themen, priorisierst Epics und optimierst Value Streams. SAFe LPM-Zertifizierung erforderlich."
+  },
+  {
+    "titel": "Blazor WebAssembly Developer",
+    "refnr": "BATCH-035",
+    "text": "Blazor-Entwickler für WebAssembly-Apps gesucht. Du arbeitest mit Blazor WASM, C# und .NET. Erfahrung mit SPA-Architekturen und SignalR ist von Vorteil."
+  },
+  {
+    "titel": "Python pytest Developer",
+    "refnr": "BATCH-036",
+    "text": "Test-Engineer mit Python pytest gesucht. Du schreibst Unit-Tests, Integration-Tests und Fixtures. Erfahrung mit Mocking, Coverage und Test-Automation ist erforderlich."
+  },
+  {
+    "titel": "Rust Systems Programmer",
+    "refnr": "BATCH-037",
+    "text": "Systems Programmer mit Rust gesucht. Du arbeitest mit Rust, Cargo und async/await. Erfahrung mit Memory Safety und Performance-Optimierung ist wichtig."
+  },
+  {
+    "titel": "ArgoCD GitOps Engineer",
+    "refnr": "BATCH-038",
+    "text": "GitOps Engineer für ArgoCD gesucht. Du implementierst GitOps-Workflows, managst Application Sets und synchronisierst Deployments. Kubernetes-Erfahrung ist erforderlich."
+  },
+  {
+    "titel": "Design Thinking Facilitator",
+    "refnr": "BATCH-039",
+    "text": "Facilitator für Design Thinking Workshops gesucht. Du moderierst Innovation-Sessions, führst Prototyping durch und coachst Teams in User-Centered Design. Agile Erfahrung wichtig."
+  },
+  {
+    "titel": "Lit Web Components Developer",
+    "refnr": "BATCH-040",
+    "text": "Developer für Lit Web Components gesucht. Du erstellst wiederverwendbare Components mit Lit, arbeitest mit Shadow DOM und Custom Elements. JavaScript und TypeScript sind wichtig."
+  },
+  {
+    "titel": "Python Celery Developer",
+    "refnr": "BATCH-041",
+    "text": "Python-Entwickler für asynchrone Tasks gesucht. Du arbeitest mit Celery, Redis/RabbitMQ und Django. Erfahrung mit Task Scheduling und Background Jobs ist erforderlich."
+  },
+  {
+    "titel": "PHP Laravel Developer",
+    "refnr": "BATCH-042",
+    "text": "PHP-Entwickler mit Laravel-Framework gesucht. Du arbeitest mit Laravel 10, Eloquent ORM und Blade Templates. Kenntnisse in MySQL und REST APIs sind wichtig."
+  },
+  {
+    "titel": "Prometheus Monitoring Engineer",
+    "refnr": "BATCH-043",
+    "text": "Monitoring Engineer für Prometheus gesucht. Du erstellst Exporters, schreibst PromQL Queries und integrierst Grafana. Kubernetes Monitoring und Alerting Erfahrung wichtig."
+  },
+  {
+    "titel": "Lean Startup Coach",
+    "refnr": "BATCH-044",
+    "text": "Startup Coach für Lean Methodologie gesucht. Du führst Build-Measure-Learn Zyklen durch, validierst MVPs und coachst Teams in Lean Prinzipien. Agile Erfahrung erforderlich."
+  },
+  {
+    "titel": "Alpine.js Developer",
+    "refnr": "BATCH-045",
+    "text": "Frontend-Entwickler für Alpine.js gesucht. Du arbeitest mit Alpine.js für leichtgewichtige Interaktivität, kombinierst es mit Tailwind CSS. JavaScript-Kenntnisse sind wichtig."
+  },
+  {
+    "titel": "Python NumPy Data Engineer",
+    "refnr": "BATCH-046",
+    "text": "Data Engineer mit NumPy-Expertise gesucht. Du verarbeitest große Datensätze mit NumPy, pandas und Dask. Erfahrung mit numerischen Berechnungen und Array-Operationen ist erforderlich."
+  },
+  {
+    "titel": "Ruby on Rails Developer",
+    "refnr": "BATCH-047",
+    "text": "Ruby on Rails Entwickler für Web-Apps gesucht. Du arbeitest mit Rails 7, ActiveRecord und Hotwire. Kenntnisse in PostgreSQL und RSpec sind wichtig."
+  },
+  {
+    "titel": "Grafana Dashboard Engineer",
+    "refnr": "BATCH-048",
+    "text": "Dashboard Engineer für Grafana gesucht. Du erstellst Dashboards, integrierst Datenquellen (Prometheus, Elasticsearch) und entwickelst Panels. Monitoring-Erfahrung wichtig."
+  },
+  {
+    "titel": "OKR Framework Consultant",
+    "refnr": "BATCH-049",
+    "text": "OKR Consultant für agile Zielsetzung gesucht. Du implementierst OKRs (Objectives & Key Results), coachst Teams in Goal Setting und trackst Fortschritte. Agile Erfahrung erforderlich."
+  },
+  {
+    "titel": "Stimulus.js Frontend Developer",
+    "refnr": "BATCH-050",
+    "text": "Frontend-Entwickler für Stimulus.js gesucht. Du arbeitest mit Stimulus (Hotwire), Turbo und sprinkles JavaScript. Integration mit Rails oder Django ist wichtig."
+  },
+  {
+    "titel": "Python Pandas Data Analyst",
+    "refnr": "BATCH-051",
+    "text": "Data Analyst mit pandas-Kenntnissen gesucht. Du analysierst Daten mit pandas, erstellt Reports und Visualisierungen mit matplotlib. SQL und Python sind erforderlich."
+  },
+  {
+    "titel": "Elixir Phoenix Developer",
+    "refnr": "BATCH-052",
+    "text": "Elixir-Entwickler für Phoenix Framework gesucht. Du arbeitest mit Elixir, Phoenix LiveView und Ecto. Erfahrung mit funktionaler Programmierung und Erlang VM ist wichtig."
+  },
+  {
+    "titel": "ELK Stack Engineer",
+    "refnr": "BATCH-053",
+    "text": "Engineer für ELK Stack (Elasticsearch, Logstash, Kibana) gesucht. Du implementierst Log-Aggregation, erstellt Dashboards und optimierst Queries. Erfahrung mit Beats wichtig."
+  },
+  {
+    "titel": "OKR Product Manager",
+    "refnr": "BATCH-054",
+    "text": "Product Manager mit OKR-Expertise gesucht. Du setzt strategische Objectives, misst Key Results und arbeitest agil mit cross-funktionalen Teams. Scrum oder SAFe Erfahrung wichtig."
+  },
+  {
+    "titel": "Qwik Framework Developer",
+    "refnr": "BATCH-055",
+    "text": "Developer für Qwik Framework gesucht. Du arbeitest mit Qwik für resumable Applications, optimierst Performance und nutzt fine-grained reactivity. TypeScript ist erforderlich."
+  }
+]

@@ -1,0 +1,26 @@
+# Scraper Configuration
+# Contains HTML parsing selectors and cleanup rules
+
+arbeitsagentur:
+  content_selector: "jb-steadetail-beschreibung"
+
+external:
+  content_selectors:
+    primary: "main"
+    secondary: "article"
+    content_pattern: "(content|job|detail|description)"
+    id_pattern: "(content|job|detail|main)"
+
+html_cleanup:
+  remove_tags:
+    - "script"
+    - "style"
+    - "nav"
+    - "header"
+    - "footer"
+    - "aside"
+    - "iframe"
+  remove_classes: "(nav|menu|sidebar|breadcrumb|cookie|popup)"
+
+headers:
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"

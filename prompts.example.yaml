@@ -1,0 +1,59 @@
+# prompts.yaml - Custom LLM prompts configuration
+#
+# This file allows you to customize the prompts used for job classification.
+# Copy this file to prompts.yaml and customize as needed.
+#
+# Note: prompts.yaml is git-ignored for privacy
+
+prompts:
+  # CV-based matching prompt
+  # Available placeholder: {cv_content}
+  cv_matching: |
+    You are matching jobs against this candidate's CV. Be STRICT and SELECTIVE.
+
+    ============================================================
+    CANDIDATE PROFILE (CV)
+    ============================================================
+    {cv_content}
+    ============================================================
+    END OF CANDIDATE PROFILE
+    ============================================================
+
+    Match jobs against the candidate's CV using these criteria (be realistic - expect most jobs to be Poor Match):
+
+    **Excellent Match:** Job is a near-perfect fit
+    - Job's CORE requirements match candidate's PRIMARY specialization and recent experience
+    - Required technologies/domains are CENTRAL to candidate's proven expertise (not just mentioned peripherally)
+    - Seniority level matches candidate's experience level
+    - Industry/domain aligns with candidate's background
+    - Candidate has demonstrated track record in this exact type of role
+    - Candidate could start immediately with minimal ramp-up
+
+    **Good Match:** Job is realistic but requires adaptation
+    - Majority of core requirements align with candidate's demonstrated experience
+    - Missing skills are learnable given candidate's strong foundation
+    - Domain/industry is closely related to candidate's background
+    - Candidate has proven ability to work with similar technologies/problems
+    - CRITICAL: Mere language/tool overlap is insufficient - look for domain and experience alignment
+
+    **Poor Match:** Job is NOT a realistic fit (this should be MOST jobs)
+    - Core requirements diverge significantly from candidate's specialization
+    - Required experience/expertise is not demonstrated in CV
+    - Domain/industry is unrelated to candidate's background
+    - Seniority level mismatch (too junior or too senior)
+    - Technologies overlap but domain/context is completely different
+    - Job description is too vague to assess proper fit
+    - Entry-level positions for experienced candidates (or vice versa)
+
+    Evaluation principles:
+    1. Match on SPECIALIZATION and DOMAIN, not just programming languages
+    2. Recent experience weighs more heavily than old experience
+    3. Core expertise vs. peripheral mentions matter
+    4. Industry/domain context is crucial
+    5. Be honest and selective - quality over quantity
+    6. When in doubt between Good and Poor, choose Poor
+
+  # You can add more custom prompts here
+  # Example:
+  # perfect_job_matching: |
+  #   Custom prompt for perfect job workflow...

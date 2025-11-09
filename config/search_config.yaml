@@ -1,0 +1,19 @@
+# Search Configuration
+# Contains default search parameters and filters
+
+defaults:
+  # Fetch maximum jobs per page (API limit)
+  page_size: 100
+
+  # Fetch multiple pages by default to get comprehensive results
+  # Set to 5 for ~500 jobs (will be split into multiple mega-batches automatically)
+  # Can be overridden with --max-pages
+  max_pages: 5
+
+  # Search radius in kilometers
+  radius_km: 25
+
+filters:
+  exclude_keywords:
+    - "weiterbildung"
+    - "ausbildung"

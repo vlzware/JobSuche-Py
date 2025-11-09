@@ -1,0 +1,8 @@
+# LLM Configuration
+# Contains model names and inference parameters
+
+models:
+  default: "google/gemini-2.5-flash"
+
+inference:
+  temperature: 0.1
