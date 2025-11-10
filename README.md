@@ -72,7 +72,7 @@ That's it! Results are automatically saved to `data/searches/YYYYMMDD_HHMMSS/`
 
 ## Workflows
 
-JobSuchePy supports three workflows via the unified `main.py` entry point:
+JobSuchePy supports four workflows via the unified `main.py` entry point:
 
 ### 1. Perfect Job Finder
 Find jobs matching your specific ideal role description.
@@ -147,6 +147,34 @@ python main.py --classify-only --input data/searches/20231020_142830 \
 **Use case:** Market research and skill demand analysis
 
 Example: "What technologies are most in-demand? How many DevOps vs Backend roles exist in my area?"
+
+---
+
+### 4. Brainstorming
+Discover relevant job titles ("Berufsbezeichnungen") based on your profile.
+
+```bash
+# Brainstorm using your CV
+python main.py --workflow brainstorm --cv cv.md
+
+# Brainstorm with CV and motivation description
+python main.py --workflow brainstorm \
+    --cv cv.md \
+    --motivation-description motivation.txt
+
+# Brainstorm with motivation only (no CV required)
+python main.py --workflow brainstorm \
+    --motivation-description "I'm passionate about cloud architecture and DevOps..."
+```
+
+**Use case:** Job search discovery - find what job titles to search for
+
+The LLM analyzes your background (CV) and/or career motivations to suggest:
+- Relevant German job titles ("Berufsbezeichnungen") to use in your searches
+- Direct examples of how to use them with the tool
+- Career direction insights based on your profile
+
+**Note:** This workflow does NOT search for actual jobs. It helps you discover which job titles to search for in other workflows. Results are saved to `brainstorm_suggestions.md` in your session directory.
 
 ---
 

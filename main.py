@@ -26,7 +26,12 @@ from src.llm import LLMProcessor
 from src.logging_config import get_module_logger
 from src.preferences import UserProfile
 from src.session import SearchSession
-from src.workflows import CVBasedWorkflow, MultiCategoryWorkflow, PerfectJobWorkflow
+from src.workflows import (
+    BrainstormWorkflow,
+    CVBasedWorkflow,
+    MultiCategoryWorkflow,
+    PerfectJobWorkflow,
+)
 
 logger = get_module_logger("main")
 
@@ -188,6 +193,11 @@ Examples:
       --perfect-job-description perfect_job_description.txt
 
   python main.py --workflow cv-based --was "Developer" --wo "Hamburg" --cv cv.md
+
+  # Brainstorm job titles (discover "Berufsbezeichnungen")
+  python main.py --workflow brainstorm --cv cv.md
+  python main.py --workflow brainstorm --cv cv.md --motivation-description motivation.txt
+  python main.py --workflow brainstorm --motivation-description motivation.txt
         """,
     )
 
@@ -202,7 +212,7 @@ Examples:
     parser.add_argument(
         "--workflow",
         type=str,
-        choices=["multi-category", "perfect-job", "cv-based"],
+        choices=["multi-category", "perfect-job", "cv-based", "brainstorm"],
         default="multi-category",
         help="Analysis workflow (default: multi-category)",
     )
@@ -272,7 +282,9 @@ Examples:
 
     # Workflow-specific options
     parser.add_argument(
-        "--cv", type=str, help="Path to your CV file (required for cv-based workflow)"
+        "--cv",
+        type=str,
+        help="Path to your CV file (required for cv-based; optional for brainstorm)",
     )
     parser.add_argument(
         "--perfect-job-category",
@@ -283,6 +295,11 @@ Examples:
         "--perfect-job-description",
         type=str,
         help="Description of your perfect job - can be a file path (.txt/.md) or direct text (required for perfect-job workflow)",
+    )
+    parser.add_argument(
+        "--motivation-description",
+        type=str,
+        help="Description of what motivates you in your career - can be a file path (.txt/.md) or direct text (optional for brainstorm workflow)",
     )
     parser.add_argument(
         "--return-all",
@@ -396,9 +413,11 @@ Examples:
             logger.error("--classify-only and --no-classification are mutually exclusive")
             sys.exit(1)
     else:
-        # Normal mode requires search parameters
-        if not args.was or not args.wo:
-            logger.error("--was and --wo are required (unless using --classify-only)")
+        # Normal mode requires search parameters (except for brainstorm workflow)
+        if args.workflow != "brainstorm" and (not args.was or not args.wo):
+            logger.error(
+                "--was and --wo are required (unless using --classify-only or --workflow brainstorm)"
+            )
             logger.error("Run 'python main.py --help' for usage information")
             sys.exit(1)
 
@@ -406,6 +425,12 @@ Examples:
     if args.perfect_job_description:
         args.perfect_job_description = load_description_from_file_or_string(
             args.perfect_job_description
+        )
+
+    # Load motivation description from file if it's a file path
+    if args.motivation_description:
+        args.motivation_description = load_description_from_file_or_string(
+            args.motivation_description
         )
 
     # Validate workflow-specific requirements
@@ -426,6 +451,19 @@ Examples:
         if not cv_path.exists():
             logger.error(f"CV file not found: {args.cv}")
             sys.exit(1)
+    elif args.workflow == "brainstorm":
+        # Brainstorm requires at least one of CV or motivation
+        if not args.cv and not args.motivation_description:
+            logger.error("--workflow brainstorm requires at least one of:")
+            logger.error("  --cv /path/to/cv.md")
+            logger.error("  --motivation-description 'description...' or /path/to/motivation.txt")
+            sys.exit(1)
+        # Validate CV file exists if provided
+        if args.cv:
+            cv_path = Path(args.cv)
+            if not cv_path.exists():
+                logger.error(f"CV file not found: {args.cv}")
+                sys.exit(1)
 
     # Validate API key if classification is enabled
     if not args.no_classification:
@@ -447,6 +485,78 @@ Examples:
     if session:
         logger.info(f"Session directory: {session.session_dir}")
         logger.info("All artifacts will be saved automatically")
+
+    # BRAINSTORM WORKFLOW: Special case - doesn't need job data
+    if args.workflow == "brainstorm":
+        # Brainstorm workflow runs independently - doesn't fetch/classify jobs
+
+        # Load CV if provided
+        cv_content = None
+        if args.cv:
+            cv_path = Path(args.cv)
+            try:
+                with open(cv_path, encoding="utf-8") as f:
+                    cv_content = f.read()
+                logger.info(f"CV: {args.cv}")
+                logger.info(f"CV length: {len(cv_content)} characters")
+            except Exception as e:
+                logger.error(f"Could not read CV file {args.cv}: {e}")
+                sys.exit(1)
+
+        # Motivation is already loaded from file if needed (see load_description_from_file_or_string above)
+        motivation_content = args.motivation_description
+        if motivation_content:
+            logger.info(f"Motivation length: {len(motivation_content)} characters")
+
+        # Validate API key for LLM
+        if not api_key:
+            logger.error("OpenRouter API key required for brainstorming")
+            logger.error("Either set OPENROUTER_API_KEY environment variable or use --api-key")
+            logger.error("Get your key at: https://openrouter.ai/keys")
+            sys.exit(1)
+
+        # Run brainstorm workflow
+        try:
+            brainstorm_workflow = BrainstormWorkflow(
+                api_key=api_key,
+                model=args.model,
+                session=session,
+                verbose=verbose,
+            )
+
+            suggestions = brainstorm_workflow.run(
+                cv_content=cv_content,
+                motivation_description=motivation_content,
+            )
+
+            # Format the output
+            output = brainstorm_workflow.format_output(suggestions)
+
+            # Save to file
+            if session:
+                output_path = session.session_dir / "brainstorm_suggestions.md"
+            else:
+                output_path = Path("brainstorm_suggestions.md")
+
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(output)
+
+            # Print concise summary instead of full output
+            print("\n" + "=" * 80)
+            print("BRAINSTORMING COMPLETE")
+            print("=" * 80)
+            print(f"\n✓ Received answer ({len(suggestions)} characters)")
+            print(f"✓ Saved to: {output_path}")
+            print("\nOpen the file to view the suggestions and usage examples.")
+            print("=" * 80)
+
+            sys.exit(0)
+
+        except (
+            WorkflowConfigurationError,
+            OpenRouterAPIError,
+        ) as e:
+            handle_classification_error(e)
 
     # Create user profile based on workflow
     if args.workflow == "multi-category":

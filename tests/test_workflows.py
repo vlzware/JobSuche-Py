@@ -12,7 +12,12 @@ import pytest
 from src.data import JobGatherer
 from src.llm import LLMProcessor
 from src.preferences import UserProfile
-from src.workflows import CVBasedWorkflow, MultiCategoryWorkflow, PerfectJobWorkflow
+from src.workflows import (
+    BrainstormWorkflow,
+    CVBasedWorkflow,
+    MultiCategoryWorkflow,
+    PerfectJobWorkflow,
+)
 
 
 @pytest.fixture
@@ -649,3 +654,219 @@ class TestBaseWorkflow:
         # Verify
         assert report == "Test Report"
         mock_generate.assert_called_once()
+
+
+class TestBrainstormWorkflow:
+    """Test brainstorm workflow"""
+
+    @pytest.fixture
+    def mock_http_response(self):
+        """Mock HTTP response from OpenRouter API"""
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": """## Software Developer
+**Confidence:** High
+**Reasoning:** Matches your background in Python and web development.
+
+## DevOps Engineer
+**Confidence:** Medium
+**Reasoning:** Your Docker and CI/CD experience aligns well."""
+                    }
+                }
+            ]
+        }
+        return response
+
+    def test_run_with_both_cv_and_motivation(self, mock_http_response):
+        """Should process both CV and motivation description"""
+        # Setup
+        with patch("src.workflows.brainstorm.default_http_client") as mock_http_client:
+            mock_http_client.post.return_value = mock_http_response
+
+            workflow = BrainstormWorkflow(
+                api_key="test-api-key", model="test-model", session=None, verbose=False
+            )
+
+            # Execute
+            result = workflow.run(
+                cv_content="Python developer with 5 years experience",
+                motivation_description="I want to work on challenging projects",
+            )
+
+            # Verify
+            assert "Software Developer" in result
+            assert "DevOps Engineer" in result
+            mock_http_client.post.assert_called_once()
+
+    def test_run_with_cv_only(self, mock_http_response):
+        """Should work with only CV content"""
+        # Setup
+        with patch("src.workflows.brainstorm.default_http_client") as mock_http_client:
+            mock_http_client.post.return_value = mock_http_response
+
+            workflow = BrainstormWorkflow(
+                api_key="test-api-key", model="test-model", session=None, verbose=False
+            )
+
+            # Execute
+            result = workflow.run(cv_content="Python developer with 5 years experience")
+
+            # Verify
+            assert "Software Developer" in result
+            mock_http_client.post.assert_called_once()
+
+    def test_run_with_motivation_only(self, mock_http_response):
+        """Should work with only motivation description"""
+        # Setup
+        with patch("src.workflows.brainstorm.default_http_client") as mock_http_client:
+            mock_http_client.post.return_value = mock_http_response
+
+            workflow = BrainstormWorkflow(
+                api_key="test-api-key", model="test-model", session=None, verbose=False
+            )
+
+            # Execute
+            result = workflow.run(motivation_description="I want to work on challenging projects")
+
+            # Verify
+            assert "Software Developer" in result
+            mock_http_client.post.assert_called_once()
+
+    def test_raises_error_without_input(self):
+        """Should raise error when neither CV nor motivation is provided"""
+        # Setup
+        workflow = BrainstormWorkflow(api_key="test-api-key", session=None, verbose=False)
+
+        # Execute & Verify
+        from src.exceptions import WorkflowConfigurationError
+
+        with pytest.raises(
+            WorkflowConfigurationError,
+            match="At least one of CV or motivation description is required",
+        ):
+            workflow.run()
+
+    def test_raises_error_with_empty_strings(self):
+        """Should raise error when inputs are empty strings"""
+        # Setup
+        workflow = BrainstormWorkflow(api_key="test-api-key", session=None, verbose=False)
+
+        # Execute & Verify
+        from src.exceptions import WorkflowConfigurationError
+
+        with pytest.raises(WorkflowConfigurationError):
+            workflow.run(cv_content="   ", motivation_description="")
+
+    def test_handles_api_error(self):
+        """Should handle OpenRouter API errors properly"""
+        # Setup
+        with patch("src.workflows.brainstorm.default_http_client") as mock_http_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 401
+            mock_response.text = "Invalid API key"
+            mock_http_client.post.return_value = mock_response
+
+            workflow = BrainstormWorkflow(
+                api_key="invalid-key", model="test-model", session=None, verbose=False
+            )
+
+            # Execute & Verify
+            from src.exceptions import OpenRouterAPIError
+
+            with pytest.raises(OpenRouterAPIError):
+                workflow.run(cv_content="Test CV")
+
+    def test_handles_empty_llm_response(self):
+        """Should handle empty LLM responses"""
+        # Setup
+        with patch("src.workflows.brainstorm.default_http_client") as mock_http_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": ""}}]  # Empty content
+            }
+            mock_http_client.post.return_value = mock_response
+
+            workflow = BrainstormWorkflow(
+                api_key="test-api-key", model="test-model", session=None, verbose=False
+            )
+
+            # Execute & Verify
+            from src.exceptions import WorkflowConfigurationError
+
+            with pytest.raises(WorkflowConfigurationError, match="LLM returned empty response"):
+                workflow.run(cv_content="Test CV")
+
+    def test_saves_artifacts_to_session(self, tmp_path):
+        """Should save prompt and response to session directory"""
+        # Setup
+        session = MagicMock()
+        session.debug_dir = tmp_path / "debug"
+        session.debug_dir.mkdir(parents=True)
+
+        with patch("src.workflows.brainstorm.default_http_client") as mock_http_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "choices": [{"message": {"content": "Test suggestions"}}]
+            }
+            mock_http_client.post.return_value = mock_response
+
+            workflow = BrainstormWorkflow(
+                api_key="test-api-key", model="test-model", session=session, verbose=False
+            )
+
+            # Execute
+            workflow.run(cv_content="Test CV")
+
+            # Verify files were created
+            assert (session.debug_dir / "brainstorm_prompt.txt").exists()
+            assert (session.debug_dir / "brainstorm_response.txt").exists()
+            assert (session.debug_dir / "brainstorm_full_response.json").exists()
+
+    def test_format_output_includes_disclaimer(self):
+        """Should format output with disclaimer and usage hints"""
+        # Setup
+        workflow = BrainstormWorkflow(api_key="test-api-key", session=None, verbose=False)
+
+        # Execute
+        formatted = workflow.format_output("Test suggestions")
+
+        # Verify
+        assert "Important Disclaimer" in formatted or "IMPORTANT DISCLAIMER" in formatted
+        assert "Test suggestions" in formatted
+        assert "How to Use" in formatted or "HOW TO USE" in formatted
+        assert "--was" in formatted
+
+    def test_uses_default_model_from_config(self):
+        """Should use default model from config when not specified"""
+        # Setup
+        with patch("src.workflows.brainstorm.config") as mock_config:
+            mock_config.get.return_value = "google/gemini-2.5-flash"
+
+            workflow = BrainstormWorkflow(api_key="test-api-key", session=None, verbose=False)
+
+            # Verify
+            assert workflow.model == "google/gemini-2.5-flash"
+
+    def test_verbose_mode_prints_progress(self, mock_http_response, capsys):
+        """Should print progress messages in verbose mode"""
+        # Setup
+        with patch("src.workflows.brainstorm.default_http_client") as mock_http_client:
+            mock_http_client.post.return_value = mock_http_response
+
+            workflow = BrainstormWorkflow(
+                api_key="test-api-key", model="test-model", session=None, verbose=True
+            )
+
+            # Execute
+            workflow.run(cv_content="Test CV")
+
+            # Verify
+            captured = capsys.readouterr()
+            assert "BRAINSTORMING JOB TITLES" in captured.out
+            assert "CV length:" in captured.out
