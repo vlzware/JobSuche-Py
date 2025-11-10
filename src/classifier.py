@@ -14,7 +14,6 @@ from .exceptions import (
     EmptyJobContentError,
     LLMDataIntegrityError,
     LLMResponseError,
-    OpenRouterAPIError,
 )
 from .http_client import HttpClient, default_http_client
 from .logging_config import get_module_logger
@@ -112,6 +111,34 @@ def load_category_config(config_path: str | None = None) -> tuple[list[str] | No
         return (None, {})
 
 
+def get_fallback_category(categories: list[str]) -> str:
+    """
+    Determine the appropriate fallback category based on the categories list.
+
+    This ensures the LLM uses the correct fallback category for different workflows:
+    - Standard classification: "Andere" (Other)
+    - Perfect job/CV workflows: "Poor Match"
+    - Generic: Last category in the list
+
+    Args:
+        categories: List of category names to classify into
+
+    Returns:
+        The fallback category name to use when no other categories match
+    """
+    if not categories:
+        return "Andere"  # Default fallback
+
+    # Check for common fallback categories in order of preference
+    if "Andere" in categories:
+        return "Andere"
+    elif "Poor Match" in categories:
+        return "Poor Match"
+    else:
+        # Use last category as fallback (convention)
+        return categories[-1]
+
+
 def build_category_guidance(
     categories: list[str], category_definitions: dict[str, str] | None = None
 ) -> str:
@@ -171,6 +198,9 @@ def classify_job_description(
     if model is None:
         model = config_obj.get("llm.models.default", "google/gemini-2.5-flash")
 
+    # Determine the appropriate fallback category for this workflow
+    fallback_category = get_fallback_category(categories)
+
     # Create the prompt for classification
     categories_str = ", ".join(f'"{cat}"' for cat in categories)
     guidance = build_category_guidance(categories, category_definitions)
@@ -181,7 +211,7 @@ def classify_job_description(
 {categories_str}
 {guidance}
 A job can belong to multiple categories. Return ONLY a JSON array of the matching categories.
-If none of the specific categories apply, return ["Andere"].
+If none of the specific categories apply, return ["{fallback_category}"].
 
 Job Description:
 {job_text[:max_chars]}
@@ -190,69 +220,60 @@ Return format example: ["Java", "Agile Projektentwicklung"]
 """
 
     try:
-        response = http_client.post(
-            url=config_obj.get("api.openrouter.endpoint"),
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": config_obj.get("llm.inference.temperature", 0.1),
-            },
+        # Import locally to avoid circular dependency
+        from .llm.openrouter_client import OpenRouterClient
+
+        # Use unified OpenRouter client
+        client = OpenRouterClient(api_key=api_key, http_client=http_client, config_obj=config_obj)
+        content, _full_response = client.complete(
+            prompt=prompt,
+            model=model,
+            temperature=config_obj.get("llm.inference.temperature", 0.1),
             timeout=config_obj.get("api.timeouts.classification", 30),
+            session=None,  # Single job classification doesn't use session
         )
 
-        if response.status_code == 200:
-            result = response.json()
-            content = result["choices"][0]["message"]["content"]
+        # Parse the JSON response - strict parsing, no silent fallbacks
+        try:
+            # Try to extract JSON array from the response
+            # Some models might add explanation text, so we need to be flexible
+            start_idx = content.find("[")
+            end_idx = content.rfind("]") + 1
 
-            # Parse the JSON response - strict parsing, no silent fallbacks
-            try:
-                # Try to extract JSON array from the response
-                # Some models might add explanation text, so we need to be flexible
-                start_idx = content.find("[")
-                end_idx = content.rfind("]") + 1
-
-                if start_idx == -1 or end_idx <= start_idx:
-                    error_msg = (
-                        f"LLM response missing JSON array brackets!\n"
-                        f'Expected format: ["Category1", "Category2"]\n'
-                        f"Got: {content[:200]}"
-                    )
-                    logger.error(error_msg)
-                    raise LLMResponseError(error_msg, raw_response=content)
-
-                json_str = content[start_idx:end_idx]
-                matched_categories = json.loads(json_str)
-
-                # Validate that returned categories are in our list
-                valid_categories = [cat for cat in matched_categories if cat in categories]
-
-                # If no valid categories, return "Andere" (legitimate case)
-                if not valid_categories:
-                    logger.warning(
-                        f"LLM returned categories not in our list: {matched_categories}. "
-                        f"Using 'Andere' as fallback."
-                    )
-                    return ["Andere"]
-
-                return valid_categories
-
-            except json.JSONDecodeError as e:
+            if start_idx == -1 or end_idx <= start_idx:
                 error_msg = (
-                    f"Failed to parse LLM response as JSON!\n"
-                    f"JSON error: {e}\n"
-                    f"Attempted to parse: {json_str[:200]}\n"
-                    f"Full response: {content[:200]}"
+                    f"LLM response missing JSON array brackets!\n"
+                    f'Expected format: ["Category1", "Category2"]\n'
+                    f"Got: {content[:200]}"
                 )
                 logger.error(error_msg)
-                raise LLMResponseError(error_msg, raw_response=content) from e
-        else:
-            # API error - raise exception instead of masking with "Andere"
-            error_msg = f"OpenRouter API error: {response.status_code} - {response.text}"
-            logger.error(error_msg)
-            raise OpenRouterAPIError(
-                error_msg, status_code=response.status_code, response_text=response.text
+                raise LLMResponseError(error_msg, raw_response=content)
+
+            json_str = content[start_idx:end_idx]
+            matched_categories = json.loads(json_str)
+
+            # Validate that returned categories are in our list
+            valid_categories = [cat for cat in matched_categories if cat in categories]
+
+            # If no valid categories, return fallback (legitimate case)
+            if not valid_categories:
+                logger.warning(
+                    f"LLM returned categories not in our list: {matched_categories}. "
+                    f"Using '{fallback_category}' as fallback."
+                )
+                return [fallback_category]
+
+            return valid_categories
+
+        except json.JSONDecodeError as e:
+            error_msg = (
+                f"Failed to parse LLM response as JSON!\n"
+                f"JSON error: {e}\n"
+                f"Attempted to parse: {json_str[:200]}\n"
+                f"Full response: {content[:200]}"
             )
+            logger.error(error_msg)
+            raise LLMResponseError(error_msg, raw_response=content) from e
 
     except Exception as e:
         # Re-raise exceptions instead of masking with "Andere"
@@ -427,6 +448,9 @@ def classify_jobs_batch(
 
     classified_jobs = []
 
+    # Determine the appropriate fallback category for this workflow
+    fallback_category = get_fallback_category(categories)
+
     # Process in batches
     for batch_start in range(0, len(jobs), batch_size):
         batch = jobs[batch_start : batch_start + batch_size]
@@ -472,126 +496,110 @@ def classify_jobs_batch(
 
         prompt = f"""Classify these German job descriptions into categories: {categories_str}
 {guidance}
-Jobs can belong to multiple categories. If none apply, use "Andere".
+Jobs can belong to multiple categories. If none apply, use "{fallback_category}".
 
 {jobs_text}
 
 IMPORTANT: Return ONE LINE per job in this exact format:
 [JOB_000] → Category1, Category2
 [JOB_001] → Category1
-[JOB_002] → Andere
+[JOB_002] → {fallback_category}
 
 Return ONLY the lines with job IDs and categories, nothing else.
 """
 
         try:
-            # Build request payload
-            payload = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": config_obj.get("llm.inference.temperature", 0.1),
-            }
+            # Import locally to avoid circular dependency
+            from .llm.openrouter_client import OpenRouterClient
 
-            # Merge any extra API parameters
-            if extra_api_params:
-                payload.update(extra_api_params)
+            # Use unified OpenRouter client
+            client = OpenRouterClient(
+                api_key=api_key, http_client=http_client, config_obj=config_obj
+            )
+            batch_info = f"Batch {batch_start // batch_size + 1} (Model: {model})"
 
-            response = http_client.post(
-                url=config_obj.get("api.openrouter.endpoint"),
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json=payload,
+            content, _full_response = client.complete(
+                prompt=prompt,
+                model=model,
+                temperature=config_obj.get("llm.inference.temperature", 0.1),
+                extra_params=extra_api_params,
                 timeout=config_obj.get("api.timeouts.batch_classification", 60),
+                session=session,
+                interaction_label=batch_info,
             )
 
-            if response.status_code == 200:
-                result = response.json()
-                content = result["choices"][0]["message"]["content"]
+            # Parse markdown-based results line by line
+            batch_results = {}
+            for line in content.split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
 
-                # Save LLM interaction to session
-                if session:
-                    batch_info = f"Batch {batch_start // batch_size + 1} (Model: {model})"
-                    session.append_llm_interaction(prompt, content, batch_info)
+                # Match pattern: [JOB_XXX] → Category1, Category2
+                match = re.match(r"\[JOB_(\d+)\]\s*(?:→|->)\s*(.+)", line)
+                if match:
+                    job_idx = int(match.group(1))
+                    cats_str = match.group(2).strip()
+                    cats = [c.strip() for c in cats_str.split(",")]
+                    # Validate categories
+                    valid_cats = [cat for cat in cats if cat in categories]
 
-                # Parse markdown-based results line by line
-                batch_results = {}
-                for line in content.split("\n"):
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    # Match pattern: [JOB_XXX] → Category1, Category2
-                    match = re.match(r"\[JOB_(\d+)\]\s*(?:→|->)\s*(.+)", line)
-                    if match:
-                        job_idx = int(match.group(1))
-                        cats_str = match.group(2).strip()
-                        cats = [c.strip() for c in cats_str.split(",")]
-                        # Validate categories
-                        valid_cats = [cat for cat in cats if cat in categories]
-
-                        if not valid_cats:
-                            logger.warning(
-                                f"JOB_{job_idx:03d}: LLM returned invalid categories: {cats}. "
-                                f"Using 'Andere' as fallback."
-                            )
-                            batch_results[job_idx] = ["Andere"]
-                        else:
-                            batch_results[job_idx] = valid_cats
-
-                # Check if we got results for all jobs
-                missing_jobs = [i for i in range(len(batch)) if i not in batch_results]
-
-                if missing_jobs:
-                    error_msg = (
-                        f"CRITICAL ERROR: LLM returned incomplete results!\n"
-                        f"  Expected {len(batch)} jobs, got {len(batch_results)} results.\n"
-                        f"  Missing job indices: {missing_jobs}\n"
-                        f"  This indicates either:\n"
-                        f"    1. LLM failed to process some jobs (potential queue scrambling!)\n"
-                        f"    2. Response parsing failed\n"
-                        f"    3. Context window exceeded\n"
-                        f"  NO SILENT FAILURES - aborting to prevent data corruption!"
-                    )
-                    logger.error(error_msg)
-                    raise LLMDataIntegrityError(
-                        error_msg,
-                        expected_count=len(batch),
-                        actual_count=len(batch_results),
-                        missing_indices=missing_jobs,
-                    )
-
-                # Create truncation lookup
-                truncation_lookup = {t["id"]: t for t in truncated_jobs}
-
-                # Assign results to jobs
-                for idx, job in enumerate(batch):
-                    job_copy = job.copy()
-                    # Direct access - should never fail due to missing_jobs check above
-                    if idx not in batch_results:
-                        raise AssertionError(
-                            f"FATAL: Job index {idx} missing from batch_results despite passing "
-                            f"missing_jobs check! This should never happen."
+                    if not valid_cats:
+                        logger.warning(
+                            f"JOB_{job_idx:03d}: LLM returned invalid categories: {cats}. "
+                            f"Using '{fallback_category}' as fallback."
                         )
-                    job_copy["categories"] = batch_results[idx]
-
-                    # Add truncation metadata
-                    job_id = f"JOB_{idx:03d}"
-                    if job_id in truncation_lookup:
-                        t = truncation_lookup[job_id]
-                        job_copy["was_truncated"] = True
-                        job_copy["original_length"] = t["original_len"]
-                        job_copy["truncated_to"] = t["truncated_to"]
+                        batch_results[job_idx] = [fallback_category]
                     else:
-                        job_copy["was_truncated"] = False
+                        batch_results[job_idx] = valid_cats
 
-                    classified_jobs.append(job_copy)
+            # Check if we got results for all jobs
+            missing_jobs = [i for i in range(len(batch)) if i not in batch_results]
 
-            else:
-                # API error - raise exception instead of masking with "Andere"
-                error_msg = f"API error: {response.status_code} - {response.text[:200]}"
-                logger.error(f"  ✗ {error_msg}")
-                raise OpenRouterAPIError(
-                    error_msg, status_code=response.status_code, response_text=response.text
+            if missing_jobs:
+                error_msg = (
+                    f"CRITICAL ERROR: LLM returned incomplete results!\n"
+                    f"  Expected {len(batch)} jobs, got {len(batch_results)} results.\n"
+                    f"  Missing job indices: {missing_jobs}\n"
+                    f"  This indicates either:\n"
+                    f"    1. LLM failed to process some jobs (potential queue scrambling!)\n"
+                    f"    2. Response parsing failed\n"
+                    f"    3. Context window exceeded\n"
+                    f"  NO SILENT FAILURES - aborting to prevent data corruption!"
                 )
+                logger.error(error_msg)
+                raise LLMDataIntegrityError(
+                    error_msg,
+                    expected_count=len(batch),
+                    actual_count=len(batch_results),
+                    missing_indices=missing_jobs,
+                )
+
+            # Create truncation lookup
+            truncation_lookup = {t["id"]: t for t in truncated_jobs}
+
+            # Assign results to jobs
+            for idx, job in enumerate(batch):
+                job_copy = job.copy()
+                # Direct access - should never fail due to missing_jobs check above
+                if idx not in batch_results:
+                    raise AssertionError(
+                        f"FATAL: Job index {idx} missing from batch_results despite passing "
+                        f"missing_jobs check! This should never happen."
+                    )
+                job_copy["categories"] = batch_results[idx]
+
+                # Add truncation metadata
+                job_id = f"JOB_{idx:03d}"
+                if job_id in truncation_lookup:
+                    t = truncation_lookup[job_id]
+                    job_copy["was_truncated"] = True
+                    job_copy["original_length"] = t["original_len"]
+                    job_copy["truncated_to"] = t["truncated_to"]
+                else:
+                    job_copy["was_truncated"] = False
+
+                classified_jobs.append(job_copy)
 
         except Exception as e:
             # Re-raise exception instead of masking with "Andere"
@@ -706,6 +714,9 @@ def classify_jobs_mega_batch(
     # Single mega-batch (jobs <= max_jobs_per_batch)
     logger.info(f"Classifying {len(jobs)} jobs in ONE mega-batch request...")
 
+    # Determine the appropriate fallback category for this workflow
+    fallback_category = get_fallback_category(categories)
+
     categories_str = ", ".join(f'"{cat}"' for cat in categories)
     guidance = build_category_guidance(categories, category_definitions)
 
@@ -777,149 +788,132 @@ def classify_jobs_mega_batch(
 
 Categories: {categories_str}
 {guidance}
-Jobs can belong to multiple categories. If none of the specific categories apply, use "Andere".
+Jobs can belong to multiple categories. If none of the specific categories apply, use "{fallback_category}".
 
 {jobs_text}
 
 IMPORTANT: Return ONE LINE per job in this exact format:
 [JOB_000] → Category1, Category2
 [JOB_001] → Category1
-[JOB_002] → Andere
+[JOB_002] → {fallback_category}
 
 Return ONLY the lines with job IDs and categories, nothing else.
 """
 
     try:
-        # Build request payload
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": config_obj.get("llm.inference.temperature", 0.1),
-        }
+        # Import locally to avoid circular dependency
+        from .llm.openrouter_client import OpenRouterClient
 
-        # Merge any extra API parameters
-        if extra_api_params:
-            payload.update(extra_api_params)
+        # Use unified OpenRouter client
+        client = OpenRouterClient(api_key=api_key, http_client=http_client, config_obj=config_obj)
+        batch_info = f"MEGA-BATCH ({len(jobs)} jobs, Model: {model})"
 
-        response = http_client.post(
-            url=config_obj.get("api.openrouter.endpoint"),
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
+        content, full_response = client.complete(
+            prompt=prompt,
+            model=model,
+            temperature=config_obj.get("llm.inference.temperature", 0.1),
+            extra_params=extra_api_params,
             timeout=config_obj.get("api.timeouts.mega_batch_classification", 120),
+            session=session,
+            interaction_label=batch_info,
         )
 
-        if response.status_code == 200:
-            result = response.json()
-            content = result["choices"][0]["message"]["content"]
+        # Parse markdown-based results line by line
+        batch_results = {}
+        for line in content.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
 
-            # Save LLM interaction to session
-            if session:
-                batch_info = f"MEGA-BATCH ({len(jobs)} jobs, Model: {model})"
-                session.append_llm_interaction(prompt, content, batch_info)
+            # Match pattern: [JOB_XXX] → Category1, Category2
+            match = re.match(r"\[JOB_(\d+)\]\s*(?:→|->)\s*(.+)", line)
+            if match:
+                job_idx = int(match.group(1))
+                cats_str = match.group(2).strip()
+                cats = [c.strip() for c in cats_str.split(",")]
+                # Validate categories
+                valid_cats = [cat for cat in cats if cat in categories]
 
-            # Parse markdown-based results line by line
-            batch_results = {}
-            for line in content.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-
-                # Match pattern: [JOB_XXX] → Category1, Category2
-                match = re.match(r"\[JOB_(\d+)\]\s*(?:→|->)\s*(.+)", line)
-                if match:
-                    job_idx = int(match.group(1))
-                    cats_str = match.group(2).strip()
-                    cats = [c.strip() for c in cats_str.split(",")]
-                    # Validate categories
-                    valid_cats = [cat for cat in cats if cat in categories]
-
-                    if not valid_cats:
-                        logger.warning(
-                            f"JOB_{job_idx:03d}: LLM returned invalid categories: {cats}. "
-                            f"Using 'Andere' as fallback."
-                        )
-                        batch_results[job_idx] = ["Andere"]
-                    else:
-                        batch_results[job_idx] = valid_cats
-
-            # Check if we got results for all jobs
-            missing_jobs = [i for i in range(len(jobs)) if i not in batch_results]
-
-            if missing_jobs:
-                error_msg = (
-                    f"CRITICAL ERROR: MEGA-BATCH returned incomplete results!\n"
-                    f"  Expected {len(jobs)} jobs, got {len(batch_results)} results.\n"
-                    f"  Missing job indices: {missing_jobs}\n"
-                    f"  This is a CATASTROPHIC failure - jobs may be misaligned!\n"
-                    f"  Possible causes:\n"
-                    f"    1. Context window exceeded (reduce max_jobs_per_mega_batch)\n"
-                    f"    2. LLM failed to process some jobs\n"
-                    f"    3. Response parsing error\n"
-                    f"  NO SILENT FAILURES - aborting to prevent data corruption!"
-                )
-                logger.error(error_msg)
-                raise LLMDataIntegrityError(
-                    error_msg,
-                    expected_count=len(jobs),
-                    actual_count=len(batch_results),
-                    missing_indices=missing_jobs,
-                )
-
-            # Create truncation lookup
-            truncation_lookup = {t["job_id"]: t for t in truncation_stats["truncated_jobs"]}
-
-            # Assign results to jobs
-            classified_jobs = []
-            for idx, job in enumerate(jobs):
-                job_copy = job.copy()
-                # Direct access - should never fail due to missing_jobs check above
-                if idx not in batch_results:
-                    raise AssertionError(
-                        f"FATAL: Job index {idx} missing from batch_results despite passing "
-                        f"missing_jobs check! This should never happen."
+                if not valid_cats:
+                    logger.warning(
+                        f"JOB_{job_idx:03d}: LLM returned invalid categories: {cats}. "
+                        f"Using '{fallback_category}' as fallback."
                     )
-                job_copy["categories"] = batch_results[idx]
-
-                # Add truncation metadata (standardized naming)
-                job_id = f"JOB_{idx:03d}"
-                if job_id in truncation_lookup:
-                    t = truncation_lookup[job_id]
-                    job_copy["_truncated"] = True
-                    job_copy["_original_text_length"] = t["original_length"]
-                    job_copy["_truncation_loss"] = t["loss"]
-                    job_copy["_warning"] = "TRUNCATED"
+                    batch_results[job_idx] = [fallback_category]
                 else:
-                    job_copy["was_truncated"] = False
+                    batch_results[job_idx] = valid_cats
 
-                classified_jobs.append(job_copy)
+        # Check if we got results for all jobs
+        missing_jobs = [i for i in range(len(jobs)) if i not in batch_results]
 
-            # Print usage stats
-            usage = result.get("usage", {})
-            tokens = usage.get("completion_tokens", 0)
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            total_tokens = prompt_tokens + tokens
-
-            logger.info(f"  ✓ Classified {len(jobs)} jobs (got {len(batch_results)} valid results)")
-            logger.info(
-                f"  ✓ Token usage: {prompt_tokens:,} prompt + {tokens:,} completion = {total_tokens:,} total"
+        if missing_jobs:
+            error_msg = (
+                f"CRITICAL ERROR: MEGA-BATCH returned incomplete results!\n"
+                f"  Expected {len(jobs)} jobs, got {len(batch_results)} results.\n"
+                f"  Missing job indices: {missing_jobs}\n"
+                f"  This is a CATASTROPHIC failure - jobs may be misaligned!\n"
+                f"  Possible causes:\n"
+                f"    1. Context window exceeded (reduce max_jobs_per_mega_batch)\n"
+                f"    2. LLM failed to process some jobs\n"
+                f"    3. Response parsing error\n"
+                f"  NO SILENT FAILURES - aborting to prevent data corruption!"
             )
-            logger.info("  [i] View actual costs at: https://openrouter.ai/activity")
-
-            # Save truncation stats to session
-            if session and truncation_stats["jobs_truncated"] > 0:
-                truncation_file = session.debug_dir / "truncation_report.json"
-                with open(truncation_file, "w", encoding="utf-8") as f:
-                    json.dump(truncation_stats, f, ensure_ascii=False, indent=2)
-                logger.info(f"Truncation report saved to {truncation_file}")
-
-            return classified_jobs
-        else:
-            # API error - raise exception instead of masking with "Andere"
-            error_msg = f"API error: {response.status_code} - {response.text[:200]}"
             logger.error(error_msg)
-            raise OpenRouterAPIError(
-                error_msg, status_code=response.status_code, response_text=response.text
+            raise LLMDataIntegrityError(
+                error_msg,
+                expected_count=len(jobs),
+                actual_count=len(batch_results),
+                missing_indices=missing_jobs,
             )
+
+        # Create truncation lookup
+        truncation_lookup = {t["job_id"]: t for t in truncation_stats["truncated_jobs"]}
+
+        # Assign results to jobs
+        classified_jobs = []
+        for idx, job in enumerate(jobs):
+            job_copy = job.copy()
+            # Direct access - should never fail due to missing_jobs check above
+            if idx not in batch_results:
+                raise AssertionError(
+                    f"FATAL: Job index {idx} missing from batch_results despite passing "
+                    f"missing_jobs check! This should never happen."
+                )
+            job_copy["categories"] = batch_results[idx]
+
+            # Add truncation metadata (standardized naming)
+            job_id = f"JOB_{idx:03d}"
+            if job_id in truncation_lookup:
+                t = truncation_lookup[job_id]
+                job_copy["_truncated"] = True
+                job_copy["_original_text_length"] = t["original_length"]
+                job_copy["_truncation_loss"] = t["loss"]
+                job_copy["_warning"] = "TRUNCATED"
+            else:
+                job_copy["was_truncated"] = False
+
+            classified_jobs.append(job_copy)
+
+        # Print usage stats from full response
+        usage = full_response.get("usage", {})
+        tokens = usage.get("completion_tokens", 0)
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        total_tokens = prompt_tokens + tokens
+
+        logger.info(f"  ✓ Classified {len(jobs)} jobs (got {len(batch_results)} valid results)")
+        logger.info(
+            f"  ✓ Token usage: {prompt_tokens:,} prompt + {tokens:,} completion = {total_tokens:,} total"
+        )
+        logger.info("  [i] View actual costs at: https://openrouter.ai/activity")
+
+        # Save truncation stats to session
+        if session and truncation_stats["jobs_truncated"] > 0:
+            truncation_file = session.debug_dir / "truncation_report.json"
+            with open(truncation_file, "w", encoding="utf-8") as f:
+                json.dump(truncation_stats, f, ensure_ascii=False, indent=2)
+            logger.info(f"Truncation report saved to {truncation_file}")
+
+        return classified_jobs
 
     except Exception as e:
         # Re-raise exception instead of masking with "Andere"

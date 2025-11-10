@@ -120,6 +120,45 @@ class SearchSession:
             f.write(response)
             f.write("\n")
 
+    def save_llm_interaction(self, prompt: str, content: str, full_response: dict, label: str = ""):
+        """
+        Save a complete LLM interaction with full API response
+
+        This is the preferred method for saving LLM interactions as it
+        captures all metadata (tokens, model info, etc.) in addition to
+        the prompt and response content.
+
+        Args:
+            prompt: The prompt sent to LLM
+            content: The extracted text content from LLM response
+            full_response: Complete API response dict (includes usage, metadata, etc.)
+            label: Optional label for this interaction (e.g., "Batch 1", "Brainstorm")
+        """
+        # Determine filename based on label or use counter
+        if label:
+            # Sanitize label for filename
+            safe_label = label.lower().replace(" ", "_").replace("/", "_")
+            base_name = safe_label
+        else:
+            # Count existing interaction files to generate unique name
+            existing = list(self.debug_dir.glob("llm_interaction_*.json"))
+            base_name = f"interaction_{len(existing) + 1:03d}"
+
+        # Save prompt
+        prompt_file = self.debug_dir / f"{base_name}_prompt.txt"
+        with open(prompt_file, "w", encoding="utf-8") as f:
+            f.write(prompt)
+
+        # Save response content
+        response_file = self.debug_dir / f"{base_name}_response.txt"
+        with open(response_file, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        # Save full API response
+        full_response_file = self.debug_dir / f"{base_name}_full_response.json"
+        with open(full_response_file, "w", encoding="utf-8") as f:
+            json.dump(full_response, f, ensure_ascii=False, indent=2)
+
     # User-facing outputs
 
     def save_classified_jobs(self, jobs: list[dict]):

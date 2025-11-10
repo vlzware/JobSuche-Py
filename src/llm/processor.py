@@ -134,7 +134,7 @@ class LLMProcessor:
         detailed description of your ideal role. Jobs are classified as:
         - Excellent Match: Very close to the perfect job description
         - Good Match: Aligns well but not perfectly
-        - Andere: Doesn't match the criteria
+        - Poor Match: Doesn't match the criteria
 
         Args:
             jobs: List of jobs to classify
@@ -145,8 +145,8 @@ class LLMProcessor:
         Returns:
             List of jobs with 'categories' field (filtered if return_only_matches=True)
         """
-        # Use "Andere" as fallback for consistency with other workflows
-        categories = ["Excellent Match", "Good Match", "Andere"]
+        # Use "Poor Match" as fallback for consistency with CV-based matching
+        categories = ["Excellent Match", "Good Match", "Poor Match"]
         category_definitions = {
             "Excellent Match": perfect_job_description,
         }

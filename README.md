@@ -94,7 +94,7 @@ python main.py --classify-only --workflow perfect-job \
 The LLM classifies each job as:
 - **Excellent Match**: Very close to your perfect job description
 - **Good Match**: Aligns well but not perfectly
-- **Andere**: Doesn't match the criteria
+- **Poor Match**: Doesn't match the criteria
 
 By default, only Excellent and Good matches are returned. Use `--return-all` to see all jobs with their classifications.
 

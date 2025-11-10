@@ -113,8 +113,7 @@ class OpenRouterAPIError(ClassificationError):
             )
         elif self.status_code == 503:
             return (
-                "OpenRouter service is temporarily unavailable.\n"
-                "Please try again in a few moments."
+                "OpenRouter service is temporarily unavailable.\nPlease try again in a few moments."
             )
         elif self.status_code and self.status_code >= 500:
             return (

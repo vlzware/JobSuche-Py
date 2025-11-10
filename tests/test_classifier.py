@@ -947,8 +947,8 @@ class TestClassifyJobsBatch:
             config_obj=config,
         )
 
-        # Should have called session.append_llm_interaction
-        assert mock_session.append_llm_interaction.called
+        # Should have called session.save_llm_interaction (new unified method)
+        assert mock_session.save_llm_interaction.called
 
     def test_classify_jobs_batch_preserves_job_fields(self, test_config):
         """Should preserve all original job fields"""

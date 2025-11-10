@@ -2,7 +2,7 @@
 Perfect job workflow - find jobs matching a specific ideal role
 
 This workflow classifies jobs based on how well they match your perfect job
-description. Results are categorized as Excellent Match, Good Match, or Andere.
+description. Results are categorized as Excellent Match, Good Match, or Poor Match.
 """
 
 from ..exceptions import WorkflowConfigurationError
@@ -17,7 +17,7 @@ class PerfectJobWorkflow(BaseWorkflow):
     classifies them as:
     - Excellent Match: Very close to your perfect job description
     - Good Match: Aligns well but not perfectly
-    - Andere: Doesn't match the criteria
+    - Poor Match: Doesn't match the criteria
 
     By default, only Excellent and Good matches are returned.
 

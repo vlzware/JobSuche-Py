@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from ..config import config
 from ..exceptions import OpenRouterAPIError, WorkflowConfigurationError
 from ..http_client import default_http_client
+from ..llm.openrouter_client import OpenRouterClient
 from ..prompts.templates import (
     BRAINSTORM_PROMPT_CV_ONLY_TEMPLATE,
     BRAINSTORM_PROMPT_MOTIVATION_ONLY_TEMPLATE,
@@ -136,44 +137,18 @@ class BrainstormWorkflow:
                 motivation_description=motivation_description,
             )
 
-        # Save the prompt if session is available
-        if self.session:
-            prompt_path = self.session.debug_dir / "brainstorm_prompt.txt"
-            with open(prompt_path, "w", encoding="utf-8") as f:
-                f.write(prompt)
-
-        # Call the LLM via OpenRouter
+        # Call the LLM via unified OpenRouter client
         try:
-            http_response = default_http_client.post(
-                url=config.get("api.openrouter.endpoint"),
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": config.get("llm.inference.temperature", 0.7),
-                    "max_tokens": 4000,
-                },
+            client = OpenRouterClient(api_key=self.api_key, http_client=default_http_client)
+
+            suggestions, _full_response = client.complete(
+                prompt=prompt,
+                model=self.model,
+                temperature=config.get("llm.inference.temperature", 0.7),
+                max_tokens=4000,
                 timeout=config.get("api.timeouts.classification", 60),
-            )
-
-            if http_response.status_code != 200:
-                error_msg = (
-                    f"OpenRouter API error: {http_response.status_code} - {http_response.text}"
-                )
-                raise OpenRouterAPIError(
-                    error_msg,
-                    status_code=http_response.status_code,
-                    response_text=http_response.text,
-                )
-
-            response_data = http_response.json()
-
-            # Extract the text content
-            suggestions: str = (
-                response_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                session=self.session,
+                interaction_label="brainstorm",
             )
 
             if not suggestions or not suggestions.strip():
@@ -181,19 +156,6 @@ class BrainstormWorkflow:
                     "LLM returned empty response",
                     workflow_type="brainstorm",
                 )
-
-            # Save the response if session is available
-            if self.session:
-                response_path = self.session.debug_dir / "brainstorm_response.txt"
-                with open(response_path, "w", encoding="utf-8") as f:
-                    f.write(suggestions)
-
-                # Also save full API response
-                import json
-
-                full_response_path = self.session.debug_dir / "brainstorm_full_response.json"
-                with open(full_response_path, "w", encoding="utf-8") as f:
-                    json.dump(response_data, f, ensure_ascii=False, indent=2)
 
             return suggestions
 

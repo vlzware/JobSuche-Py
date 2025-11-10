@@ -798,10 +798,10 @@ class TestBrainstormWorkflow:
 
     def test_saves_artifacts_to_session(self, tmp_path):
         """Should save prompt and response to session directory"""
-        # Setup
-        session = MagicMock()
-        session.debug_dir = tmp_path / "debug"
-        session.debug_dir.mkdir(parents=True)
+        # Setup - use real SearchSession so files are actually written
+        from src.session import SearchSession
+
+        session = SearchSession(base_dir=str(tmp_path), timestamp="test_session", verbose=False)
 
         with patch("src.workflows.brainstorm.default_http_client") as mock_http_client:
             mock_response = MagicMock()
@@ -818,7 +818,7 @@ class TestBrainstormWorkflow:
             # Execute
             workflow.run(cv_content="Test CV")
 
-            # Verify files were created
+            # Verify files were created (new unified naming)
             assert (session.debug_dir / "brainstorm_prompt.txt").exists()
             assert (session.debug_dir / "brainstorm_response.txt").exists()
             assert (session.debug_dir / "brainstorm_full_response.json").exists()
