@@ -16,8 +16,7 @@ limits:
   # If you fetch more than 150 jobs, multiple mega-batches will be created automatically
   job_text_mega_batch: 25000
 
-  # Maximum jobs per mega-batch (calculated based on 1M token context window)
-  # Conservative limit: 100 jobs uses ~37% of context (large safety margin)
-  # Based on real API tests: 7 chars/token for German job descriptions
+  # Maximum jobs per mega-batch
+  # Conservative limit: 70 jobs balances efficiency with LLM format consistency
   # Larger searches will be automatically split into multiple mega-batches
-  max_jobs_per_mega_batch: 100
+  max_jobs_per_mega_batch: 70

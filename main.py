@@ -189,7 +189,6 @@ Examples:
 
   # Different workflows
   python main.py --workflow perfect-job --was "Backend Dev" --wo "Berlin" \\
-      --perfect-job-category "Dream Job" \\
       --perfect-job-description perfect_job_description.txt
 
   python main.py --workflow cv-based --was "Developer" --wo "Hamburg" --cv cv.md
@@ -285,11 +284,6 @@ Examples:
         "--cv",
         type=str,
         help="Path to your CV file (required for cv-based; optional for brainstorm)",
-    )
-    parser.add_argument(
-        "--perfect-job-category",
-        type=str,
-        help="Label for matching jobs in output/reports - binary classification into this vs 'Andere' (required for perfect-job workflow)",
     )
     parser.add_argument(
         "--perfect-job-description",
@@ -436,11 +430,8 @@ Examples:
     # Validate workflow-specific requirements
     if args.workflow == "perfect-job":
         # Only validate for new searches, not re-classification
-        if not args.classify_only and (
-            not args.perfect_job_category or not args.perfect_job_description
-        ):
+        if not args.classify_only and not args.perfect_job_description:
             logger.error("--workflow perfect-job requires:")
-            logger.error("  --perfect-job-category 'Category Name'")
             logger.error("  --perfect-job-description 'Description of ideal role...'")
             sys.exit(1)
     elif args.workflow == "cv-based":
@@ -567,16 +558,15 @@ Examples:
     elif args.workflow == "perfect-job":
         user_profile = UserProfile()
         # For re-classification, we need the parameters
-        if args.classify_only and (
-            not args.perfect_job_category or not args.perfect_job_description
-        ):
+        if args.classify_only and not args.perfect_job_description:
             logger.error("--classify-only with --workflow perfect-job requires:")
-            logger.error("  --perfect-job-category and --perfect-job-description")
+            logger.error("  --perfect-job-description")
             sys.exit(1)
-        user_profile.set_perfect_job_category(
-            category_name=args.perfect_job_category, description=args.perfect_job_description
-        )
-        logger.info(f"Perfect job category: {args.perfect_job_category}")
+        if args.perfect_job_description:
+            user_profile.set_perfect_job_category(
+                category_name="Perfect Job", description=args.perfect_job_description
+            )
+        logger.info("Perfect job workflow: matching jobs by quality (Excellent/Good/Poor)")
         logger.info(f"Return only matches: {not args.return_all}")
     else:  # cv-based
         user_profile = UserProfile(cv_path=args.cv)
@@ -642,7 +632,6 @@ Examples:
                 )
                 classified_jobs = perfect_workflow.process(
                     jobs=jobs,
-                    perfect_job_category=args.perfect_job_category,
                     perfect_job_description=args.perfect_job_description,
                     return_only_matches=not args.return_all,
                     batch_size=args.batch_size,
@@ -742,7 +731,6 @@ Examples:
                         size=args.size,
                         max_pages=args.max_pages,
                         enable_scraping=not args.no_scraping,
-                        perfect_job_category=args.perfect_job_category,
                         perfect_job_description=args.perfect_job_description,
                         return_only_matches=not args.return_all,
                         show_statistics=True,

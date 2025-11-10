@@ -299,7 +299,6 @@ class TestPerfectJobWorkflow:
         # Execute
         result = workflow.process(
             jobs=sample_jobs,
-            perfect_job_category="Dream Job",
             perfect_job_description="Python, Docker, remote work",
             return_only_matches=True,
         )
@@ -308,7 +307,6 @@ class TestPerfectJobWorkflow:
         assert result == matching_jobs
         mock_llm_processor.classify_perfect_job.assert_called_once_with(
             jobs=sample_jobs,
-            perfect_job_category="Dream Job",
             perfect_job_description="Python, Docker, remote work",
             return_only_matches=True,
             batch_size=None,
@@ -336,9 +334,8 @@ class TestPerfectJobWorkflow:
         # Execute
         workflow.process(jobs=sample_jobs)
 
-        # Verify - should use profile's category
+        # Verify - should use profile's category description
         call_args = mock_llm_processor.classify_perfect_job.call_args
-        assert call_args[1]["perfect_job_category"] == "My Perfect Role"
         assert call_args[1]["perfect_job_description"] == "Backend with Python and Cloud"
 
     def test_return_only_matches_filters(
@@ -359,7 +356,6 @@ class TestPerfectJobWorkflow:
         # Execute
         workflow.process(
             jobs=sample_jobs,
-            perfect_job_category="Dream Job",
             perfect_job_description="Python developer",
             return_only_matches=True,
         )
@@ -376,7 +372,7 @@ class TestPerfectJobWorkflow:
         all_jobs_classified = sample_jobs.copy()
         for job in all_jobs_classified:
             job["categories"] = ["Andere"]  # Non-matches
-        all_jobs_classified[0]["categories"] = ["Dream Job"]  # One match
+        all_jobs_classified[0]["categories"] = ["Excellent Match"]  # One match
 
         mock_llm_processor.classify_perfect_job.return_value = all_jobs_classified
 
@@ -390,7 +386,6 @@ class TestPerfectJobWorkflow:
         # Execute
         result = workflow.process(
             jobs=sample_jobs,
-            perfect_job_category="Dream Job",
             perfect_job_description="Python developer",
             return_only_matches=False,
         )

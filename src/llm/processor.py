@@ -123,33 +123,37 @@ class LLMProcessor:
     def classify_perfect_job(
         self,
         jobs: list[dict],
-        perfect_job_category: str,
         perfect_job_description: str,
         return_only_matches: bool = False,
         batch_size: int | None = None,
     ) -> list[dict]:
         """
-        Classify jobs as either matching a "perfect job" description or not
+        Classify jobs based on how well they match a "perfect job" description
 
         This is a specialized workflow for finding jobs that match a specific,
-        detailed description of your ideal role.
+        detailed description of your ideal role. Jobs are classified as:
+        - Excellent Match: Very close to the perfect job description
+        - Good Match: Aligns well but not perfectly
+        - Andere: Doesn't match the criteria
 
         Args:
             jobs: List of jobs to classify
-            perfect_job_category: Name of your perfect job category (e.g., "My Perfect Job")
             perfect_job_description: Detailed description of your ideal job
-            return_only_matches: If True, return only jobs matching the perfect job category
+            return_only_matches: If True, return only Excellent and Good matches (default: False)
             batch_size: If specified, use batch mode instead of mega-batch
 
         Returns:
             List of jobs with 'categories' field (filtered if return_only_matches=True)
         """
-        categories = [perfect_job_category, "Andere"]
-        category_definitions = {perfect_job_category: perfect_job_description}
+        # Use "Andere" as fallback for consistency with other workflows
+        categories = ["Excellent Match", "Good Match", "Andere"]
+        category_definitions = {
+            "Excellent Match": perfect_job_description,
+        }
 
-        logger.info(f"Finding jobs matching: {perfect_job_category}")
+        logger.info("Finding jobs matching your perfect job description")
         if return_only_matches:
-            logger.info("  Will return ONLY matching jobs")
+            logger.info("  Will return only Excellent and Good matches")
 
         classified = self.classify_multi_category(
             jobs=jobs,
@@ -158,13 +162,20 @@ class LLMProcessor:
             batch_size=batch_size,
         )
 
-        # Filter to only matches if requested
+        # Filter to only good matches if requested
         if return_only_matches:
             matches = [
-                job for job in classified if perfect_job_category in job.get("categories", [])
+                job
+                for job in classified
+                if any(
+                    cat in job.get("categories", []) for cat in ["Excellent Match", "Good Match"]
+                )
             ]
 
+            excellent = sum(1 for job in matches if "Excellent Match" in job.get("categories", []))
+            good = sum(1 for job in matches if "Good Match" in job.get("categories", []))
             logger.info(f"✓ Found {len(matches)}/{len(classified)} matching jobs")
+            logger.info(f"  {excellent} Excellent, {good} Good")
 
             return matches
 

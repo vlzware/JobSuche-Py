@@ -78,28 +78,25 @@ JobSuchePy supports four workflows via the unified `main.py` entry point:
 Find jobs matching your specific ideal role description.
 
 ```bash
-# Search and filter for perfect matches (returns ONLY matches by default)
+# Search and filter for perfect matches (returns ONLY Excellent/Good matches by default)
 python main.py --workflow perfect-job \
     --was "Backend Developer" --wo "Berlin" \
-    --perfect-job-category "My Ideal Role" \
     --perfect-job-description perfect_job_description.txt
 
 # Re-classify existing data with perfect-job criteria (using session directory)
 python main.py --classify-only --workflow perfect-job \
     --input data/searches/20231020_142830 \
-    --perfect-job-category "Ideal Backend Role" \
     --perfect-job-description perfect_job_description.txt
 ```
 
 **Use case:** Highly targeted job search with specific requirements
 
-The LLM classifies each job as either:
-- **Matching** your perfect job description (assigned to your custom category)
-- **Not matching** (classified as "Andere")
+The LLM classifies each job as:
+- **Excellent Match**: Very close to your perfect job description
+- **Good Match**: Aligns well but not perfectly
+- **Andere**: Doesn't match the criteria
 
-**Note:** The category name is simply a label for matching jobs in your output and reports. It makes results more meaningful than generic "Match/No Match" labels.
-
-By default, only matching jobs are returned. Use `--return-all` to see all jobs with their classifications.
+By default, only Excellent and Good matches are returned. Use `--return-all` to see all jobs with their classifications.
 
 ---
 
@@ -309,7 +306,7 @@ Check [OpenRouter](https://openrouter.ai/) for current pricing, models, ratings 
 5. **Export** — Save as JSON, CSV, or text
 
 **Fast and Cheap or Slower, Accurate and Expensive:**
-- Mega-batch processing: Process per default ~100 jobs per API call for cost-effectiveness. Larger searches are automatically split into multiple mega-batches.
+- Mega-batch processing: Process per default ~70 jobs per API call for cost-effectiveness. Larger searches are automatically split into multiple mega-batches.
 - Model selection: Try different models to find the best fit for your needs.
 
 ---
