@@ -86,8 +86,8 @@ jobsuche-py/
 │   ├── workflows/         # Different use case workflows
 │   │   ├── base.py
 │   │   ├── multi_category.py
-│   │   ├── perfect_job.py
-│   │   └── cv_based.py
+│   │   ├── matching.py
+│   │   └── brainstorm.py
 │   ├── api_client.py      # Arbeitsagentur API
 │   ├── scraper.py         # Web scraping
 │   ├── classifier.py      # Core classification logic

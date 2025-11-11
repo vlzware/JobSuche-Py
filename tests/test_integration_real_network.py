@@ -339,7 +339,7 @@ class TestWorkflowsEndToEnd:
         from src.llm import LLMProcessor
         from src.preferences import UserProfile
         from src.session import SearchSession
-        from src.workflows import PerfectJobWorkflow
+        from src.workflows import MatchingWorkflow
 
         print("\n" + "=" * 70)
         print("🎯 WORKFLOW E2E: Perfect Job Matching")
@@ -348,17 +348,13 @@ class TestWorkflowsEndToEnd:
         # Setup
         session = SearchSession(verbose=False)
         user_profile = UserProfile()
-        user_profile.set_perfect_job_category(
-            category_name="Ideal Backend Role",
-            description="Python backend with Docker, AWS, microservices, remote work",
-        )
 
         llm_processor = LLMProcessor(
             api_key=api_key, model="google/gemini-2.5-flash-lite", session=session, verbose=False
         )
         gatherer = JobGatherer(session=session, verbose=False)
 
-        workflow = PerfectJobWorkflow(
+        workflow = MatchingWorkflow(
             user_profile=user_profile,
             llm_processor=llm_processor,
             job_gatherer=gatherer,
@@ -375,8 +371,7 @@ class TestWorkflowsEndToEnd:
             size=5,
             max_pages=1,
             enable_scraping=True,
-            perfect_job_category="Ideal Backend Role",
-            perfect_job_description="Python backend with Docker, AWS, microservices",
+            perfect_job_description="Python backend with Docker, AWS, microservices, remote work",
             return_only_matches=False,  # Return all to see classification
             show_statistics=False,
         )
@@ -385,17 +380,22 @@ class TestWorkflowsEndToEnd:
         if len(classified_jobs) > 0:
             assert all(
                 "categories" in job for job in classified_jobs
-            ), "All jobs should have categories"
+            ), "All jobs should have categories (match ratings)"
 
-            matches = [j for j in classified_jobs if "Ideal Backend Role" in j["categories"]]
-            non_matches = [j for j in classified_jobs if "Andere" in j["categories"]]
+            # Matching workflow returns categories like "Excellent Match", "Good Match", "Poor Match"
+            excellent = [j for j in classified_jobs if "Excellent Match" in j.get("categories", [])]
+            good = [j for j in classified_jobs if "Good Match" in j.get("categories", [])]
+            poor = [j for j in classified_jobs if "Poor Match" in j.get("categories", [])]
 
             print(f"✅ Classified {len(classified_jobs)} jobs")
-            print(f"   Matches: {len(matches)}")
-            print(f"   Non-matches: {len(non_matches)}")
+            print(f"   Excellent matches: {len(excellent)}")
+            print(f"   Good matches: {len(good)}")
+            print(f"   Poor matches: {len(poor)}")
 
-            if matches:
-                print(f"   Example match: {matches[0].get('titel', 'N/A')[:50]}")
+            if excellent:
+                print(f"   Example excellent: {excellent[0].get('titel', 'N/A')[:50]}")
+            elif good:
+                print(f"   Example good: {good[0].get('titel', 'N/A')[:50]}")
         else:
             print("⚠️  No jobs successfully scraped")
 
@@ -413,7 +413,7 @@ class TestWorkflowsEndToEnd:
         from src.llm import LLMProcessor
         from src.preferences import UserProfile
         from src.session import SearchSession
-        from src.workflows import CVBasedWorkflow
+        from src.workflows import MatchingWorkflow
 
         print("\n" + "=" * 70)
         print("🎯 WORKFLOW E2E: CV-Based Matching")
@@ -447,7 +447,7 @@ class TestWorkflowsEndToEnd:
         )
         gatherer = JobGatherer(session=session, verbose=False)
 
-        workflow = CVBasedWorkflow(
+        workflow = MatchingWorkflow(
             user_profile=user_profile,
             llm_processor=llm_processor,
             job_gatherer=gatherer,
@@ -464,6 +464,7 @@ class TestWorkflowsEndToEnd:
             size=5,
             max_pages=1,
             enable_scraping=True,
+            cv_content=user_profile.get_cv_content(),
             return_only_matches=False,  # Return all to see ratings
             show_statistics=False,
         )
@@ -474,7 +475,7 @@ class TestWorkflowsEndToEnd:
                 "categories" in job for job in classified_jobs
             ), "All jobs should have categories (match ratings)"
 
-            # CV-based workflow returns categories like "Excellent Match", "Good Match", "Poor Match"
+            # Matching workflow returns categories like "Excellent Match", "Good Match", "Poor Match"
             excellent = [j for j in classified_jobs if "Excellent Match" in j.get("categories", [])]
             good = [j for j in classified_jobs if "Good Match" in j.get("categories", [])]
             poor = [j for j in classified_jobs if "Poor Match" in j.get("categories", [])]

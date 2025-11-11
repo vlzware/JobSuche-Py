@@ -1,7 +1,7 @@
 """
 Test workflow classes with mocked dependencies
 
-Tests the three workflow types (multi-category, perfect-job, cv-based)
+Tests the workflow types (multi-category, matching, brainstorm)
 and the base workflow functionality.
 """
 
@@ -14,9 +14,8 @@ from src.llm import LLMProcessor
 from src.preferences import UserProfile
 from src.workflows import (
     BrainstormWorkflow,
-    CVBasedWorkflow,
+    MatchingWorkflow,
     MultiCategoryWorkflow,
-    PerfectJobWorkflow,
 )
 
 
@@ -278,18 +277,18 @@ class TestMultiCategoryWorkflow:
         mock_llm_processor.classify_multi_category.assert_not_called()
 
 
-class TestPerfectJobWorkflow:
-    """Test perfect-job workflow"""
+class TestMatchingWorkflow:
+    """Test matching workflow (unified CV-based and perfect-job)"""
 
-    def test_process_with_explicit_parameters(
+    def test_process_with_perfect_job_only(
         self, sample_jobs, mock_user_profile, mock_llm_processor, mock_session
     ):
-        """Should use explicit perfect job parameters"""
+        """Should work with only perfect job description"""
         # Setup
-        matching_jobs = [sample_jobs[0]]  # Only first job matches
-        mock_llm_processor.classify_perfect_job.return_value = matching_jobs
+        matching_jobs = [sample_jobs[0]]
+        mock_llm_processor.classify_matching.return_value = matching_jobs
 
-        workflow = PerfectJobWorkflow(
+        workflow = MatchingWorkflow(
             user_profile=mock_user_profile,
             llm_processor=mock_llm_processor,
             session=mock_session,
@@ -305,38 +304,81 @@ class TestPerfectJobWorkflow:
 
         # Verify
         assert result == matching_jobs
-        mock_llm_processor.classify_perfect_job.assert_called_once_with(
+        mock_llm_processor.classify_matching.assert_called_once_with(
             jobs=sample_jobs,
+            cv_content=None,
             perfect_job_description="Python, Docker, remote work",
             return_only_matches=True,
             batch_size=None,
         )
 
-    def test_process_uses_profile_settings(self, sample_jobs, mock_llm_processor, mock_session):
-        """Should fall back to UserProfile when parameters not provided"""
+    def test_process_with_cv_only(
+        self, sample_jobs, mock_user_profile, mock_llm_processor, mock_session
+    ):
+        """Should work with only CV content"""
         # Setup
-        profile = MagicMock(spec=UserProfile)
-        profile.get_categories.return_value = ["My Perfect Role", "Andere"]
-        profile.get_category_definitions.return_value = {
-            "My Perfect Role": "Backend with Python and Cloud"
-        }
-
+        cv_content = "5 years Python experience, Django, REST APIs, Docker"
         matching_jobs = [sample_jobs[0]]
-        mock_llm_processor.classify_perfect_job.return_value = matching_jobs
+        mock_llm_processor.classify_matching.return_value = matching_jobs
 
-        workflow = PerfectJobWorkflow(
-            user_profile=profile,
+        workflow = MatchingWorkflow(
+            user_profile=mock_user_profile,
             llm_processor=mock_llm_processor,
             session=mock_session,
             verbose=False,
         )
 
         # Execute
-        workflow.process(jobs=sample_jobs)
+        result = workflow.process(
+            jobs=sample_jobs,
+            cv_content=cv_content,
+            return_only_matches=True,
+        )
 
-        # Verify - should use profile's category description
-        call_args = mock_llm_processor.classify_perfect_job.call_args
-        assert call_args[1]["perfect_job_description"] == "Backend with Python and Cloud"
+        # Verify
+        assert result == matching_jobs
+        mock_llm_processor.classify_matching.assert_called_once_with(
+            jobs=sample_jobs,
+            cv_content=cv_content,
+            perfect_job_description=None,
+            return_only_matches=True,
+            batch_size=None,
+        )
+
+    def test_process_with_both_cv_and_perfect_job(
+        self, sample_jobs, mock_user_profile, mock_llm_processor, mock_session
+    ):
+        """Should work with both CV and perfect job description (recommended)"""
+        # Setup
+        cv_content = "5 years Python experience"
+        perfect_job_desc = "Remote Python position with Docker"
+        matching_jobs = [sample_jobs[0]]
+        mock_llm_processor.classify_matching.return_value = matching_jobs
+
+        workflow = MatchingWorkflow(
+            user_profile=mock_user_profile,
+            llm_processor=mock_llm_processor,
+            session=mock_session,
+            verbose=False,
+        )
+
+        # Execute
+        result = workflow.process(
+            jobs=sample_jobs,
+            cv_content=cv_content,
+            perfect_job_description=perfect_job_desc,
+            return_only_matches=True,
+        )
+
+        # Verify
+        assert result == matching_jobs
+        mock_llm_processor.classify_matching.assert_called_once_with(
+            jobs=sample_jobs,
+            cv_content=cv_content,
+            perfect_job_description=perfect_job_desc,
+            return_only_matches=True,
+            batch_size=None,
+        )
 
     def test_return_only_matches_filters(
         self, sample_jobs, mock_user_profile, mock_llm_processor, mock_session
@@ -344,9 +386,9 @@ class TestPerfectJobWorkflow:
         """return_only_matches=True should filter non-matches"""
         # Setup
         matching_jobs = [sample_jobs[0]]
-        mock_llm_processor.classify_perfect_job.return_value = matching_jobs
+        mock_llm_processor.classify_matching.return_value = matching_jobs
 
-        workflow = PerfectJobWorkflow(
+        workflow = MatchingWorkflow(
             user_profile=mock_user_profile,
             llm_processor=mock_llm_processor,
             session=mock_session,
@@ -356,12 +398,12 @@ class TestPerfectJobWorkflow:
         # Execute
         workflow.process(
             jobs=sample_jobs,
-            perfect_job_description="Python developer",
+            cv_content="Python developer",
             return_only_matches=True,
         )
 
         # Verify
-        call_args = mock_llm_processor.classify_perfect_job.call_args
+        call_args = mock_llm_processor.classify_matching.call_args
         assert call_args[1]["return_only_matches"] is True
 
     def test_return_all_includes_non_matches(
@@ -371,12 +413,12 @@ class TestPerfectJobWorkflow:
         # Setup
         all_jobs_classified = sample_jobs.copy()
         for job in all_jobs_classified:
-            job["categories"] = ["Andere"]  # Non-matches
-        all_jobs_classified[0]["categories"] = ["Excellent Match"]  # One match
+            job["categories"] = ["Poor Match"]
+        all_jobs_classified[0]["categories"] = ["Excellent Match"]
 
-        mock_llm_processor.classify_perfect_job.return_value = all_jobs_classified
+        mock_llm_processor.classify_matching.return_value = all_jobs_classified
 
-        workflow = PerfectJobWorkflow(
+        workflow = MatchingWorkflow(
             user_profile=mock_user_profile,
             llm_processor=mock_llm_processor,
             session=mock_session,
@@ -392,17 +434,15 @@ class TestPerfectJobWorkflow:
 
         # Verify
         assert len(result) == 3  # All jobs returned
-        call_args = mock_llm_processor.classify_perfect_job.call_args
+        call_args = mock_llm_processor.classify_matching.call_args
         assert call_args[1]["return_only_matches"] is False
 
-    def test_raises_error_without_description(self, sample_jobs, mock_llm_processor, mock_session):
-        """Should raise error when no description is available"""
-        # Setup - profile with no valid perfect job category
+    def test_raises_error_without_inputs(self, sample_jobs, mock_llm_processor, mock_session):
+        """Should raise error when neither CV nor perfect job description provided"""
+        # Setup
         profile = MagicMock(spec=UserProfile)
-        profile.get_categories.return_value = ["Cat1", "Cat2", "Cat3"]  # Too many
-        profile.get_category_definitions.return_value = {}
 
-        workflow = PerfectJobWorkflow(
+        workflow = MatchingWorkflow(
             user_profile=profile,
             llm_processor=mock_llm_processor,
             session=mock_session,
@@ -413,96 +453,16 @@ class TestPerfectJobWorkflow:
         from src.exceptions import WorkflowConfigurationError
 
         with pytest.raises(
-            WorkflowConfigurationError, match="Perfect job workflow requires exactly one category"
+            WorkflowConfigurationError,
+            match="At least one of CV or perfect job description is required",
         ):
             workflow.process(jobs=sample_jobs)
 
-
-class TestCVBasedWorkflow:
-    """Test CV-based workflow"""
-
-    def test_process_with_cv_content(
-        self, sample_jobs, mock_user_profile, mock_llm_processor, mock_session
-    ):
-        """Should use explicit CV content"""
+    def test_raises_error_with_empty_strings(self, sample_jobs, mock_llm_processor, mock_session):
+        """Should raise error when inputs are empty/whitespace strings"""
         # Setup
-        cv_content = "5 years Python experience, Django, REST APIs, Docker"
-        matching_jobs = [sample_jobs[0]]
-        mock_llm_processor.classify_cv_based.return_value = matching_jobs
-
-        workflow = CVBasedWorkflow(
-            user_profile=mock_user_profile,
-            llm_processor=mock_llm_processor,
-            session=mock_session,
-            verbose=False,
-        )
-
-        # Execute
-        result = workflow.process(jobs=sample_jobs, cv_content=cv_content, return_only_matches=True)
-
-        # Verify
-        assert result == matching_jobs
-        mock_llm_processor.classify_cv_based.assert_called_once_with(
-            jobs=sample_jobs, cv_content=cv_content, return_only_matches=True, batch_size=None
-        )
-
-    def test_process_uses_profile_cv(self, sample_jobs, mock_llm_processor, mock_session):
-        """Should fall back to UserProfile CV"""
-        # Setup
-        profile = MagicMock(spec=UserProfile)
-        profile.has_cv.return_value = True
-        profile.get_cv_content.return_value = "CV from profile"
-
-        matching_jobs = [sample_jobs[0]]
-        mock_llm_processor.classify_cv_based.return_value = matching_jobs
-
-        workflow = CVBasedWorkflow(
-            user_profile=profile,
-            llm_processor=mock_llm_processor,
-            session=mock_session,
-            verbose=False,
-        )
-
-        # Execute
-        workflow.process(jobs=sample_jobs)
-
-        # Verify
-        call_args = mock_llm_processor.classify_cv_based.call_args
-        assert call_args[1]["cv_content"] == "CV from profile"
-
-    def test_return_only_matches_filters(
-        self, sample_jobs, mock_user_profile, mock_llm_processor, mock_session
-    ):
-        """Should filter to Good/Excellent matches only"""
-        # Setup
-        mock_user_profile.has_cv.return_value = True
-        mock_user_profile.get_cv_content.return_value = "Python developer"
-
-        matching_jobs = [sample_jobs[0]]
-        mock_llm_processor.classify_cv_based.return_value = matching_jobs
-
-        workflow = CVBasedWorkflow(
-            user_profile=mock_user_profile,
-            llm_processor=mock_llm_processor,
-            session=mock_session,
-            verbose=False,
-        )
-
-        # Execute
-        workflow.process(jobs=sample_jobs, return_only_matches=True)
-
-        # Verify
-        call_args = mock_llm_processor.classify_cv_based.call_args
-        assert call_args[1]["return_only_matches"] is True
-
-    def test_raises_error_without_cv(self, sample_jobs, mock_llm_processor, mock_session):
-        """Should raise error when no CV is available"""
-        # Setup
-        profile = MagicMock(spec=UserProfile)
-        profile.has_cv.return_value = False
-
-        workflow = CVBasedWorkflow(
-            user_profile=profile,
+        workflow = MatchingWorkflow(
+            user_profile=MagicMock(spec=UserProfile),
             llm_processor=mock_llm_processor,
             session=mock_session,
             verbose=False,
@@ -511,8 +471,8 @@ class TestCVBasedWorkflow:
         # Execute & Verify
         from src.exceptions import WorkflowConfigurationError
 
-        with pytest.raises(WorkflowConfigurationError, match="CV content required"):
-            workflow.process(jobs=sample_jobs)
+        with pytest.raises(WorkflowConfigurationError):
+            workflow.process(jobs=sample_jobs, cv_content="   ", perfect_job_description="")
 
 
 class TestBaseWorkflow:

@@ -120,129 +120,90 @@ class LLMProcessor:
                 category_definitions=category_definitions,
             )
 
-    def classify_perfect_job(
+    def classify_matching(
         self,
         jobs: list[dict],
-        perfect_job_description: str,
+        cv_content: str | None = None,
+        perfect_job_description: str | None = None,
         return_only_matches: bool = False,
         batch_size: int | None = None,
     ) -> list[dict]:
         """
-        Classify jobs based on how well they match a "perfect job" description
+        Classify jobs based on match to your profile (CV and/or perfect job description)
 
-        This is a specialized workflow for finding jobs that match a specific,
-        detailed description of your ideal role. Jobs are classified as:
-        - Excellent Match: Very close to the perfect job description
-        - Good Match: Aligns well but not perfectly
-        - Poor Match: Doesn't match the criteria
+        This unified matching method handles three scenarios:
+        1. CV only: Match based on skills and experience
+        2. Perfect job description only: Match based on desired role
+        3. Both (recommended): Match based on both capabilities and preferences
+
+        Jobs are classified as:
+        - Excellent Match: Strong alignment with your profile
+        - Good Match: Reasonable fit with some gaps
+        - Poor Match: Significant misalignment
 
         Args:
             jobs: List of jobs to classify
-            perfect_job_description: Detailed description of your ideal job
+            cv_content: Your CV content (optional)
+            perfect_job_description: Description of your ideal job (optional)
             return_only_matches: If True, return only Excellent and Good matches (default: False)
             batch_size: If specified, use batch mode instead of mega-batch
 
         Returns:
             List of jobs with 'categories' field (filtered if return_only_matches=True)
+
+        Raises:
+            ValueError: If neither CV nor perfect job description provided
         """
-        # Use "Poor Match" as fallback for consistency with CV-based matching
+        # Define categories for matching
         categories = ["Excellent Match", "Good Match", "Poor Match"]
+
+        # Validate at least one input
+        has_cv = cv_content and cv_content.strip()
+        has_perfect_job = perfect_job_description and perfect_job_description.strip()
+
+        if not has_cv and not has_perfect_job:
+            raise ValueError(
+                "At least one of cv_content or perfect_job_description must be provided"
+            )
+
+        # Build guidance based on what's provided
+        guidance_parts = []
+
+        logger.info("Matching jobs against your profile...")
+
+        if has_cv:
+            # Use custom prompt if provided, otherwise use default templates
+            custom_cv_template = self.custom_prompts.get("cv_matching")
+
+            if custom_cv_template:
+                # Use legacy combined template for custom prompts
+                cv_guidance = custom_cv_template.format(cv_content=cv_content)
+            else:
+                # Use split template approach
+                cv_profile = CV_PROFILE_TEMPLATE.format(cv_content=cv_content)
+                cv_guidance = cv_profile + "\n" + CV_CLASSIFICATION_CRITERIA
+
+            guidance_parts.append(cv_guidance)
+
+            cv_length = len(cv_content) if cv_content else 0
+            logger.info(f"  CV provided: {cv_length:,} characters")
+
+        if has_perfect_job:
+            guidance_parts.append(f"IDEAL JOB CRITERIA:\n{perfect_job_description}")
+            pj_length = len(perfect_job_description) if perfect_job_description else 0
+            logger.info(f"  Perfect job description provided: {pj_length:,} characters")
+
+        # Combine all guidance into one string for "Excellent Match" category
+        # This prevents duplication in the prompt
+        combined_guidance = "\n\n".join(guidance_parts)
         category_definitions = {
-            "Excellent Match": perfect_job_description,
+            "Excellent Match": combined_guidance,
         }
 
-        logger.info("Finding jobs matching your perfect job description")
         if return_only_matches:
             logger.info("  Will return only Excellent and Good matches")
 
-        classified = self.classify_multi_category(
-            jobs=jobs,
-            categories=categories,
-            category_definitions=category_definitions,
-            batch_size=batch_size,
-        )
-
-        # Filter to only good matches if requested
-        if return_only_matches:
-            matches = [
-                job
-                for job in classified
-                if any(
-                    cat in job.get("categories", []) for cat in ["Excellent Match", "Good Match"]
-                )
-            ]
-
-            excellent = sum(1 for job in matches if "Excellent Match" in job.get("categories", []))
-            good = sum(1 for job in matches if "Good Match" in job.get("categories", []))
-            logger.info(f"✓ Found {len(matches)}/{len(classified)} matching jobs")
-            logger.info(f"  {excellent} Excellent, {good} Good")
-
-            return matches
-
-        return classified
-
-    def classify_cv_based(
-        self,
-        jobs: list[dict],
-        cv_content: str,
-        return_only_matches: bool = False,
-        batch_size: int | None = None,
-    ) -> list[dict]:
-        """
-        Classify jobs based on CV match
-
-        Uses your CV to determine if jobs are a good fit. The LLM analyzes
-        both the job description and your CV to assess compatibility.
-
-        Args:
-            jobs: List of jobs to classify
-            cv_content: Your CV content (markdown or text) - full content is sent
-            return_only_matches: If True, return only jobs that match your CV
-            batch_size: If specified, use batch mode instead of mega-batch
-
-        Returns:
-            List of jobs with 'categories' field and 'cv_match_score' (filtered if requested)
-        """
-        # Define categories for CV-based matching
-        categories = ["Excellent Match", "Good Match", "Poor Match"]
-
-        # Note CV size (larger documents use more tokens)
-        cv_length = len(cv_content)
-        logger.info("Matching jobs against your CV...")
-        logger.info(f"  CV length: {cv_length:,} characters")
-        logger.info("  Note: Larger documents will consume more tokens")
-
-        # Build CV-based classification guidance
-        # Split into two parts to avoid CV duplication:
-        # 1. CV profile (shown once via category definition)
-        # 2. Classification criteria (embedded in the CV profile)
-
-        # Use custom prompt if provided, otherwise use default split templates
-        custom_cv_template = self.custom_prompts.get("cv_matching")
-
-        if custom_cv_template:
-            # Use legacy combined template for custom prompts
-            cv_guidance = custom_cv_template.format(cv_content=cv_content)
-            # Assign to only ONE category to avoid duplication
-            category_definitions = {
-                "Excellent Match": cv_guidance,
-            }
-        else:
-            # Use new split template approach
-            # Format CV profile with actual content
-            cv_profile = CV_PROFILE_TEMPLATE.format(cv_content=cv_content)
-            # Combine profile + criteria into a single guidance string
-            cv_guidance = cv_profile + "\n" + CV_CLASSIFICATION_CRITERIA
-
-            # CRITICAL: Assign to only ONE category to prevent duplication
-            # build_category_guidance() will add this once with "IMPORTANT:" prefix
-            category_definitions = {
-                "Excellent Match": cv_guidance,
-            }
-
-        if return_only_matches:
-            logger.info("  Will return only Excellent and Good matches")
-
+        # Classify using the multi-category infrastructure
         classified = self.classify_multi_category(
             jobs=jobs,
             categories=categories,

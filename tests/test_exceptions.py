@@ -342,14 +342,14 @@ class TestClassifierExceptionRaising:
 class TestWorkflowExceptionRaising:
     """Test that workflows raise correct exceptions"""
 
-    def test_cv_based_workflow_raises_configuration_error(self):
-        """Test CVBasedWorkflow raises WorkflowConfigurationError when CV missing"""
+    def test_matching_workflow_raises_configuration_error_without_inputs(self):
+        """Test MatchingWorkflow raises WorkflowConfigurationError when neither CV nor perfect job provided"""
         from src.preferences import UserProfile
-        from src.workflows.cv_based import CVBasedWorkflow
+        from src.workflows.matching import MatchingWorkflow
 
-        # Create workflow without CV
+        # Create workflow without CV or perfect job description
         profile = UserProfile()
-        workflow = CVBasedWorkflow(
+        workflow = MatchingWorkflow(
             user_profile=profile,
             llm_processor=None,  # type: ignore
             session=None,
@@ -359,17 +359,17 @@ class TestWorkflowExceptionRaising:
         with pytest.raises(WorkflowConfigurationError) as exc_info:
             workflow.process(jobs=[])
 
-        assert exc_info.value.workflow_type == "cv-based"
-        assert "CV content required" in str(exc_info.value)
+        assert exc_info.value.workflow_type == "matching"
+        assert "At least one of CV or perfect job description is required" in str(exc_info.value)
 
-    def test_perfect_job_workflow_raises_configuration_error(self):
-        """Test PerfectJobWorkflow raises WorkflowConfigurationError when misconfigured"""
+    def test_matching_workflow_raises_configuration_error_with_empty_inputs(self):
+        """Test MatchingWorkflow raises WorkflowConfigurationError when inputs are empty strings"""
         from src.preferences import UserProfile
-        from src.workflows.perfect_job import PerfectJobWorkflow
+        from src.workflows.matching import MatchingWorkflow
 
-        # Create workflow with too many categories
-        profile = UserProfile(categories=["Cat1", "Cat2", "Cat3", "Andere"])
-        workflow = PerfectJobWorkflow(
+        # Create workflow with empty string inputs
+        profile = UserProfile()
+        workflow = MatchingWorkflow(
             user_profile=profile,
             llm_processor=None,  # type: ignore
             session=None,
@@ -377,6 +377,6 @@ class TestWorkflowExceptionRaising:
         )
 
         with pytest.raises(WorkflowConfigurationError) as exc_info:
-            workflow.process(jobs=[])
+            workflow.process(jobs=[], cv_content="   ", perfect_job_description="")
 
-        assert exc_info.value.workflow_type == "perfect-job"
+        assert exc_info.value.workflow_type == "matching"

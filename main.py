@@ -28,9 +28,8 @@ from src.preferences import UserProfile
 from src.session import SearchSession
 from src.workflows import (
     BrainstormWorkflow,
-    CVBasedWorkflow,
+    MatchingWorkflow,
     MultiCategoryWorkflow,
-    PerfectJobWorkflow,
 )
 
 logger = get_module_logger("main")
@@ -187,11 +186,17 @@ Examples:
   # Or specify a JSON file directly
   python main.py --classify-only --input data/searches/20231020_142830/debug/02_scraped_jobs.json
 
-  # Different workflows
-  python main.py --workflow perfect-job --was "Backend Dev" --wo "Berlin" \\
+  # Matching workflow (personalized job search)
+  # Match using CV only
+  python main.py --workflow matching --was "Developer" --wo "Hamburg" --cv cv.md
+
+  # Match using perfect job description only
+  python main.py --workflow matching --was "Backend Dev" --wo "Berlin" \\
       --perfect-job-description perfect_job_description.txt
 
-  python main.py --workflow cv-based --was "Developer" --wo "Hamburg" --cv cv.md
+  # Match using BOTH (recommended for best results)
+  python main.py --workflow matching --was "Python Developer" --wo "München" \\
+      --cv cv.md --perfect-job-description perfect_job_description.txt
 
   # Brainstorm job titles (discover "Berufsbezeichnungen")
   python main.py --workflow brainstorm --cv cv.md
@@ -211,7 +216,7 @@ Examples:
     parser.add_argument(
         "--workflow",
         type=str,
-        choices=["multi-category", "perfect-job", "cv-based", "brainstorm"],
+        choices=["multi-category", "matching", "brainstorm"],
         default="multi-category",
         help="Analysis workflow (default: multi-category)",
     )
@@ -283,12 +288,12 @@ Examples:
     parser.add_argument(
         "--cv",
         type=str,
-        help="Path to your CV file (required for cv-based; optional for brainstorm)",
+        help="Path to your CV file (for matching workflow; optional for brainstorm)",
     )
     parser.add_argument(
         "--perfect-job-description",
         type=str,
-        help="Description of your perfect job - can be a file path (.txt/.md) or direct text (required for perfect-job workflow)",
+        help="Description of your perfect job - can be a file path (.txt/.md) or direct text (for matching workflow)",
     )
     parser.add_argument(
         "--motivation-description",
@@ -298,7 +303,7 @@ Examples:
     parser.add_argument(
         "--return-all",
         action="store_true",
-        help="Return all jobs including non-matches (perfect-job/cv-based workflows)",
+        help="Return all jobs including non-matches (matching workflow only)",
     )
 
     # Output options
@@ -428,20 +433,20 @@ Examples:
         )
 
     # Validate workflow-specific requirements
-    if args.workflow == "perfect-job":
-        # Only validate for new searches, not re-classification
-        if not args.classify_only and not args.perfect_job_description:
-            logger.error("--workflow perfect-job requires:")
+    if args.workflow == "matching":
+        # Matching workflow requires at least one of CV or perfect job description
+        if not args.cv and not args.perfect_job_description:
+            logger.error("--workflow matching requires at least one of:")
+            logger.error("  --cv /path/to/cv.md")
             logger.error("  --perfect-job-description 'Description of ideal role...'")
+            logger.error("Note: You can provide both for best results!")
             sys.exit(1)
-    elif args.workflow == "cv-based":
-        if not args.cv:
-            logger.error("--workflow cv-based requires --cv /path/to/cv.md")
-            sys.exit(1)
-        cv_path = Path(args.cv)
-        if not cv_path.exists():
-            logger.error(f"CV file not found: {args.cv}")
-            sys.exit(1)
+        # Validate CV file exists if provided
+        if args.cv:
+            cv_path = Path(args.cv)
+            if not cv_path.exists():
+                logger.error(f"CV file not found: {args.cv}")
+                sys.exit(1)
     elif args.workflow == "brainstorm":
         # Brainstorm requires at least one of CV or motivation
         if not args.cv and not args.motivation_description:
@@ -555,28 +560,37 @@ Examples:
         logger.info(
             f"Categories ({user_profile.get_category_source()}): {', '.join(user_profile.get_categories())}"
         )
-    elif args.workflow == "perfect-job":
+    elif args.workflow == "matching":
+        # Matching workflow: load CV if provided, perfect job description is passed separately
         user_profile = UserProfile()
-        # For re-classification, we need the parameters
-        if args.classify_only and not args.perfect_job_description:
-            logger.error("--classify-only with --workflow perfect-job requires:")
-            logger.error("  --perfect-job-description")
-            sys.exit(1)
-        if args.perfect_job_description:
-            user_profile.set_perfect_job_category(
-                category_name="Perfect Job", description=args.perfect_job_description
+
+        # Load CV content if provided
+        cv_content = None
+        if args.cv:
+            cv_path = Path(args.cv)
+            try:
+                with open(cv_path, encoding="utf-8") as f:
+                    cv_content = f.read()
+                logger.info(f"CV: {args.cv}")
+                logger.info(f"CV length: {len(cv_content)} characters")
+            except Exception as e:
+                logger.error(f"Could not read CV file {args.cv}: {e}")
+                sys.exit(1)
+
+        # Display what's being used for matching
+        if cv_content and args.perfect_job_description:
+            logger.info(
+                "Matching workflow: Using BOTH CV and perfect job description (recommended!)"
             )
-        logger.info("Perfect job workflow: matching jobs by quality (Excellent/Good/Poor)")
-        logger.info(f"Return only matches: {not args.return_all}")
-    else:  # cv-based
-        user_profile = UserProfile(cv_path=args.cv)
-        if not user_profile.has_cv():
-            logger.error(f"Could not load CV from {args.cv}")
-            sys.exit(1)
-        logger.info(f"CV: {args.cv}")
-        cv_content = user_profile.get_cv_content()
-        if cv_content:
-            logger.info(f"CV length: {len(cv_content)} characters")
+        elif cv_content:
+            logger.info("Matching workflow: Using CV only")
+        elif args.perfect_job_description:
+            logger.info("Matching workflow: Using perfect job description only")
+            if args.perfect_job_description:
+                logger.info(
+                    f"Perfect job description length: {len(args.perfect_job_description)} characters"
+                )
+
         logger.info(f"Return only matches: {not args.return_all}")
 
     # CLASSIFY-ONLY MODE: Load jobs from JSON
@@ -623,28 +637,19 @@ Examples:
                     verbose=verbose,
                 )
                 classified_jobs = multi_workflow.process(jobs=jobs, batch_size=args.batch_size)
-            elif args.workflow == "perfect-job":
-                perfect_workflow = PerfectJobWorkflow(
+            elif args.workflow == "matching":
+                matching_workflow = MatchingWorkflow(
                     user_profile=user_profile,
                     llm_processor=llm_processor,
                     session=session,
                     verbose=verbose,
                 )
-                classified_jobs = perfect_workflow.process(
+                classified_jobs = matching_workflow.process(
                     jobs=jobs,
+                    cv_content=cv_content,
                     perfect_job_description=args.perfect_job_description,
                     return_only_matches=not args.return_all,
                     batch_size=args.batch_size,
-                )
-            else:  # cv-based
-                cv_workflow = CVBasedWorkflow(
-                    user_profile=user_profile,
-                    llm_processor=llm_processor,
-                    session=session,
-                    verbose=verbose,
-                )
-                classified_jobs = cv_workflow.process(
-                    jobs=jobs, return_only_matches=not args.return_all, batch_size=args.batch_size
                 )
 
         except (
@@ -716,47 +721,28 @@ Examples:
                         batch_size=args.batch_size,
                     )
                     completed_workflow = multi_workflow  # For later reference to gathering_stats
-                elif args.workflow == "perfect-job":
-                    perfect_workflow = PerfectJobWorkflow(
+                elif args.workflow == "matching":
+                    matching_workflow = MatchingWorkflow(
                         user_profile=user_profile,
                         llm_processor=llm_processor,
                         job_gatherer=gatherer,
                         session=session,
                         verbose=verbose,
                     )
-                    classified_jobs, failed_jobs = perfect_workflow.run(
+                    classified_jobs, failed_jobs = matching_workflow.run(
                         was=args.was,
                         wo=args.wo,
                         umkreis=args.umkreis,
                         size=args.size,
                         max_pages=args.max_pages,
                         enable_scraping=not args.no_scraping,
+                        show_statistics=True,
+                        cv_content=cv_content,
                         perfect_job_description=args.perfect_job_description,
                         return_only_matches=not args.return_all,
-                        show_statistics=True,
                         batch_size=args.batch_size,
                     )
-                    completed_workflow = perfect_workflow  # For later reference to gathering_stats
-                else:  # cv-based
-                    cv_workflow = CVBasedWorkflow(
-                        user_profile=user_profile,
-                        llm_processor=llm_processor,
-                        job_gatherer=gatherer,
-                        session=session,
-                        verbose=verbose,
-                    )
-                    classified_jobs, failed_jobs = cv_workflow.run(
-                        was=args.was,
-                        wo=args.wo,
-                        umkreis=args.umkreis,
-                        size=args.size,
-                        max_pages=args.max_pages,
-                        enable_scraping=not args.no_scraping,
-                        return_only_matches=not args.return_all,
-                        show_statistics=True,
-                        batch_size=args.batch_size,
-                    )
-                    completed_workflow = cv_workflow  # For later reference to gathering_stats
+                    completed_workflow = matching_workflow  # For later reference to gathering_stats
 
                 # Get actual total from API (not just classified count)
                 total_jobs = completed_workflow.gathering_stats.get(
@@ -789,12 +775,10 @@ Examples:
                 "total_found", len(classified_jobs)
             )
 
-            # For filtered workflows (cv-based, perfect-job without --return-all):
+            # For filtered workflows (matching without --return-all):
             # All scraped jobs are classified, but only matches are returned
             # For multi-category: all scraped jobs are both classified and returned
-            if (
-                args.workflow == "cv-based" or args.workflow == "perfect-job"
-            ) and not args.return_all:
+            if args.workflow == "matching" and not args.return_all:
                 # Filtered workflow: total_classified = all scraped jobs
                 total_classified = successful_fetches
             else:
@@ -808,11 +792,7 @@ Examples:
             total_jobs_for_dashboard = total_jobs  # All jobs from the raw file
 
             # In classify-only mode, check if filtering was requested
-            if (
-                args.classify_only
-                and (args.workflow == "cv-based" or args.workflow == "perfect-job")
-                and not args.return_all
-            ):
+            if args.classify_only and args.workflow == "matching" and not args.return_all:
                 # All jobs in input file were classified
                 total_classified = total_jobs  # total_jobs was set to len(jobs) earlier
             else:
@@ -866,19 +846,13 @@ Examples:
 
         # Calculate total_classified for report (same logic as dashboard)
         if "completed_workflow" in locals() and hasattr(completed_workflow, "gathering_stats"):
-            if (
-                args.workflow == "cv-based" or args.workflow == "perfect-job"
-            ) and not args.return_all:
+            if args.workflow == "matching" and not args.return_all:
                 report_total_classified = completed_workflow.gathering_stats.get(
                     "successfully_extracted", len(classified_jobs)
                 )
             else:
                 report_total_classified = len(classified_jobs)
-        elif (
-            args.classify_only
-            and (args.workflow == "cv-based" or args.workflow == "perfect-job")
-            and not args.return_all
-        ):
+        elif args.classify_only and args.workflow == "matching" and not args.return_all:
             # For filtered workflows in classify-only mode: all successfully extracted jobs were classified
             report_total_classified = len(jobs)  # Use jobs (successfully extracted), not total_jobs
         else:

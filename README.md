@@ -12,7 +12,7 @@ Analyze job listings, classify them by skills, track market trends, find persona
 | DevOps Engineer          | Berlin | AutoTech Systems | Good Match      | https://... |
 | ...                      | ...    | ...              | ...             | ...         |
 
-_example output with a CV-based search (fictional data)_
+_example output with matching workflow (fictional data)_
 
 ## Features
 
@@ -22,7 +22,7 @@ _example output with a CV-based search (fictional data)_
 - **Cheap/free or smart/more expensive** — By choosing the right model
 - **Rich Exports** — JSON, CSV, and text reports with direct application links
 - **Configurable** — Customize categories for your domain
-- **Multiple Workflows** — Market analysis, perfect job finder, CV-based matching...
+- **Multiple Workflows** — Market analysis, personalized job matching, career brainstorming...
 
 Usable for jobseekers, or just for fun and education.
 
@@ -72,61 +72,57 @@ That's it! Results are automatically saved to `data/searches/YYYYMMDD_HHMMSS/`
 
 ## Workflows
 
-JobSuchePy supports four workflows via the unified `main.py` entry point:
+JobSuchePy supports three workflows via the unified `main.py` entry point:
 
-### 1. Perfect Job Finder
-Find jobs matching your specific ideal role description.
+### 1. Matching Workflow
+Personalized job matching based on your profile (CV and/or ideal job description).
 
+**Three ways to match:**
+
+**A) CV only** — Match based on your experience and skills
 ```bash
-# Search and filter for perfect matches (returns ONLY Excellent/Good matches by default)
-python main.py --workflow perfect-job \
-    --was "Backend Developer" --wo "Berlin" \
-    --perfect-job-description perfect_job_description.txt
+python main.py --workflow matching \
+    --was "Software Developer" --wo "Hamburg" \
+    --cv cv.md
+```
 
-# Re-classify existing data with perfect-job criteria (using session directory)
-python main.py --classify-only --workflow perfect-job \
-    --input data/searches/20231020_142830 \
+**B) Perfect job description only** — Match based on your ideal role
+```bash
+python main.py --workflow matching \
+    --was "Backend Developer" --wo "Berlin" \
     --perfect-job-description perfect_job_description.txt
 ```
 
-**Use case:** Highly targeted job search with specific requirements
+**C) Both (recommended!)** — Match based on both your capabilities AND preferences
+```bash
+python main.py --workflow matching \
+    --was "Python Developer" --wo "München" \
+    --cv cv.md \
+    --perfect-job-description perfect_job_description.txt
+```
+
+**Use case:** Personalized job search — find positions that match both what you CAN do and what you WANT to do
 
 The LLM classifies each job as:
-- **Excellent Match**: Very close to your perfect job description
-- **Good Match**: Aligns well but not perfectly
-- **Poor Match**: Doesn't match the criteria
+- **Excellent Match**: Strong alignment with your profile
+- **Good Match**: Reasonable fit with some gaps
+- **Poor Match**: Significant misalignment
 
 By default, only Excellent and Good matches are returned. Use `--return-all` to see all jobs with their classifications.
 
----
+**Note:** Markdown format works best for CVs — LLMs parse it more accurately.
 
-### 2. CV-Based Matching
-Match jobs against your CV for personalized recommendations. (Note — Markdown is much easier to read for LLMs, so convert your CV to Markdown, then _check_ it for the best results.)
-
+**Re-classification:**
 ```bash
-# Search and match against your CV
-python main.py --workflow cv-based \
-    --was "Software Developer" --wo "Hamburg" \
-    --cv cv.md
-
-# Re-classify existing data using your CV (using session directory)
-python main.py --classify-only --workflow cv-based \
+# Re-classify existing data with matching criteria
+python main.py --classify-only --workflow matching \
     --input data/searches/20231020_142830 \
-    --cv cv.md
+    --cv cv.md --perfect-job-description perfect_job_description.txt
 ```
 
-**Use case:** Find realistic opportunities matching your actual experience
-
-The LLM analyzes your CV content and evaluates each job:
-- **Excellent Match:** Requirements closely align with your experience
-- **Good Match:** Within your domain, some growth required
-- **Poor Match:** Significant skill gaps or different domain
-
-Example: Your CV shows 5 years of Java backend experience — the system prioritizes Java backend roles and filters out entry-level or unrelated positions.
-
 ---
 
-### 3. Multi-Category Analysis
+### 2. Multi-Category Analysis
 Standard market analysis — classify jobs into multiple categories. This workflow is used when no specific workflow parameters are set.
 
 ```bash
@@ -147,7 +143,7 @@ Example: "What technologies are most in-demand? How many DevOps vs Backend roles
 
 ---
 
-### 4. Brainstorming
+### 3. Brainstorming
 Discover relevant job titles ("Berufsbezeichnungen") based on your profile.
 
 ```bash
@@ -319,8 +315,10 @@ The idea of re-classification is to try different models or categories on the sa
 
 **Convenience wrappers** are available for re-classification:
 - `./reclassify.sh [session_dir]` - Multi-category (defaults to latest session)
-- `./reclassify_perfect_job.sh "Category" "Description" [session_dir]`
-- `./reclassify_cv.sh [cv_file] [session_dir]`
+- `./reclassify_matching.sh [options] [session_dir]` - Matching workflow
+  - `--cv cv.md` - CV only
+  - `--perfect-job-description desc.txt` - Perfect job only
+  - `--cv cv.md --perfect-job-description desc.txt` - Both (recommended!)
 
 ---
 
