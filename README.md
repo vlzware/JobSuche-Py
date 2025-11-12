@@ -185,11 +185,14 @@ Each search creates a timestamped directory with:
 
 ```
 data/searches/YYYYMMDD_HHMMSS/
-├── jobs_classified.json    # Complete data with classifications
-├── jobs_all.csv             # Successfully parsed jobs (spreadsheet)
-├── jobs_failed.csv          # Jobs that couldn't be scraped (title, employer, URL, error type)
-├── analysis_report.txt      # Statistics and insights
-└── debug/                   # Raw data for troubleshooting
+├── jobs_classified.json      # Complete data with classifications
+├── jobs_all.csv              # Successfully parsed jobs (spreadsheet)
+├── jobs_failed.csv           # Jobs that couldn't be scraped (title, employer, URL, error type)
+├── analysis_report.txt       # Statistics and insights
+├── session_info_*.json       # Session metadata (workflow, counts, parameters)
+└── debug/                    # Raw data for troubleshooting
+    ├── *_thinking.md         # LLM reasoning process (if available)
+    └── ...
 ```
 
 ---
@@ -319,6 +322,21 @@ The idea of re-classification is to try different models or categories on the sa
   - `--cv cv.md` - CV only
   - `--perfect-job-description desc.txt` - Perfect job only
   - `--cv cv.md --perfect-job-description desc.txt` - Both (recommended!)
+
+### Merging Multiple Sessions
+
+You can merge and re-classify multiple search sessions together (e.g., different job titles, same skills):
+
+```bash
+# Merge multiple sessions and classify together
+python main.py --classify-only --workflow matching \
+    --input data/searches/20231020_142830 \
+           data/searches/20231020_153045 \
+           data/searches/20231020_164512 \
+    --cv cv.md --perfect-job-description perfect_job.txt
+```
+
+The tool automatically deduplicates jobs by their reference number (refnr) before classification, ensuring each job is only processed once even if it appears in multiple search results.
 
 ---
 

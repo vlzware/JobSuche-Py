@@ -28,7 +28,12 @@ class SearchSession:
     """
 
     def __init__(
-        self, base_dir: str | None = None, timestamp: str | None = None, verbose: bool = True
+        self,
+        base_dir: str | None = None,
+        timestamp: str | None = None,
+        verbose: bool = True,
+        workflow: str | None = None,
+        classify_only: bool = False,
     ):
         """
         Initialize a new search session
@@ -37,6 +42,8 @@ class SearchSession:
             base_dir: Base directory for search sessions (defaults to value from paths_config.yaml)
             timestamp: Optional custom timestamp (defaults to current time)
             verbose: Whether to print logs to console (default: True)
+            workflow: Workflow type (multi-category, matching, brainstorm)
+            classify_only: Whether this is a classify-only session
         """
         if base_dir is None:
             base_dir = config.get("paths.directories.searches", "data/searches")
@@ -47,6 +54,14 @@ class SearchSession:
         self.timestamp = timestamp
         self.session_dir = Path(base_dir) / timestamp
         self.debug_dir = self.session_dir / "debug"
+        self.workflow = workflow
+        self.classify_only = classify_only
+
+        # Session metadata (to be populated during workflow)
+        self.search_term: str | None = None
+        self.location: str | None = None
+        self.total_jobs: int | None = None
+        self.classified_jobs: int | None = None
 
         # Create directories
         self.session_dir.mkdir(parents=True, exist_ok=True)
@@ -159,6 +174,71 @@ class SearchSession:
         with open(full_response_file, "w", encoding="utf-8") as f:
             json.dump(full_response, f, ensure_ascii=False, indent=2)
 
+        # Extract and save thinking process (if available)
+        thinking = self._extract_thinking_process(full_response)
+        if thinking:
+            thinking_file = self.debug_dir / f"{base_name}_thinking.md"
+            with open(thinking_file, "w", encoding="utf-8") as f:
+                f.write(thinking)
+
+    def _extract_thinking_process(self, full_response: dict) -> str | None:
+        """
+        Extract thinking/reasoning process from LLM response and format as Markdown
+
+        Args:
+            full_response: Complete API response dict
+
+        Returns:
+            Formatted markdown string with thinking process, or None if not available
+        """
+        # Extract metadata for the header
+        model = full_response.get("model", "unknown")
+        response_id = full_response.get("id", "unknown")
+
+        # Get usage information
+        usage = full_response.get("usage", {})
+        total_tokens = usage.get("total_tokens", 0)
+        completion_details = usage.get("completion_tokens_details", {})
+        reasoning_tokens = completion_details.get("reasoning_tokens", 0)
+
+        # Try to get reasoning from the message
+        choices = full_response.get("choices", [])
+        if not choices:
+            return None
+
+        message = choices[0].get("message", {})
+        reasoning_text = message.get("reasoning", "")
+        reasoning_details = message.get("reasoning_details", [])
+
+        # If no reasoning available, return None
+        if not reasoning_text and not reasoning_details:
+            return None
+
+        # Build the markdown document
+        markdown_parts = []
+
+        # Add header with metadata
+        markdown_parts.append("# LLM Thinking Process\n")
+        markdown_parts.append(f"**Model:** {model}\n")
+        markdown_parts.append(f"**Response ID:** {response_id}\n")
+        markdown_parts.append(f"**Total Tokens:** {total_tokens:,}\n")
+        if reasoning_tokens > 0:
+            markdown_parts.append(f"**Reasoning Tokens:** {reasoning_tokens:,}\n")
+        markdown_parts.append("\n---\n\n")
+
+        # Add the reasoning text
+        if reasoning_text:
+            markdown_parts.append(reasoning_text.strip())
+        elif reasoning_details:
+            # If we only have reasoning_details, extract text from there
+            for detail in reasoning_details:
+                if detail.get("type") == "reasoning.text":
+                    text = detail.get("text", "")
+                    if text:
+                        markdown_parts.append(text.strip())
+
+        return "\n".join(markdown_parts)
+
     # User-facing outputs
 
     def save_classified_jobs(self, jobs: list[dict]):
@@ -233,6 +313,54 @@ class SearchSession:
                         job.get("error_type", "UNKNOWN"),
                     ]
                 )
+
+        return str(file_path)
+
+    def save_session_info(self) -> str:
+        """
+        Save session metadata to a JSON file with abbreviated workflow name
+
+        The filename indicates the workflow type:
+        - MC = MultiCategory workflow
+        - MA = Matching workflow
+        - BR = Brainstorm workflow
+        - Appends _CO for classify-only sessions
+
+        Returns:
+            Path to the saved session info file
+        """
+        # Determine workflow abbreviation
+        workflow_abbrev_map = {
+            "multi-category": "MC",
+            "matching": "MA",
+            "brainstorm": "BR",
+        }
+        workflow_abbrev = workflow_abbrev_map.get(self.workflow or "", "UNK")
+
+        # Append CO for classify-only
+        if self.classify_only:
+            workflow_abbrev += "_CO"
+
+        # Build filename
+        filename = f"session_info_{workflow_abbrev}.json"
+        file_path = self.session_dir / filename
+
+        # Prepare metadata
+        session_info = {
+            "timestamp": self.timestamp,
+            "timestamp_human": datetime.strptime(self.timestamp, "%Y%m%d_%H%M%S").strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            "workflow": self.workflow or "unknown",
+            "classify_only": self.classify_only,
+            "search_term": self.search_term,
+            "location": self.location,
+            "total_jobs": self.total_jobs,
+            "classified_jobs": self.classified_jobs,
+        }
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(session_info, f, ensure_ascii=False, indent=2)
 
         return str(file_path)
 

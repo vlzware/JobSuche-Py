@@ -326,9 +326,11 @@ Examples:
     parser.add_argument(
         "--input",
         type=str,
-        help="Input JSON file or session directory (use with --classify-only). "
+        nargs="+",
+        help="Input JSON file(s) or session directory/directories (use with --classify-only). "
+        "Can specify multiple paths to merge sessions. "
         "If directory: uses debug/02_scraped_jobs.json (raw scraped data). "
-        "Always uses unclassified data for clean re-classification",
+        "Multiple sessions are deduplicated by refnr before classification.",
     )
     parser.add_argument(
         "--no-scraping",
@@ -370,43 +372,21 @@ Examples:
     if args.classify_only:
         if not args.input:
             logger.error("--classify-only requires --input <file.json or session_directory>")
-            logger.error("Usage: python main.py --classify-only --input <path>")
+            logger.error("Usage: python main.py --classify-only --input <path> [<path2> ...]")
             sys.exit(1)
 
-        input_path = Path(args.input)
-        if not input_path.exists():
-            logger.error(f"Input path not found: {args.input}")
-            sys.exit(1)
-
-        # If it's a directory, resolve to raw scraped data
-        if input_path.is_dir():
-            # Re-classification should always use raw scraped data (no existing classifications)
-            scraped_jobs_path = input_path / "debug" / "02_scraped_jobs.json"
-
-            if scraped_jobs_path.exists():
-                args.input = str(scraped_jobs_path)
-                # Display path relative to cwd if possible, otherwise use as-is
-                try:
-                    display_path = scraped_jobs_path.resolve().relative_to(Path.cwd())
-                except ValueError:
-                    display_path = scraped_jobs_path
-                logger.info(f"Using raw scraped data: {display_path}")
-            else:
-                # Display path relative to cwd if possible, otherwise use as-is
-                try:
-                    display_path = scraped_jobs_path.resolve().relative_to(Path.cwd())
-                except ValueError:
-                    display_path = scraped_jobs_path
-                logger.error(f"Raw scraped data not found in session: {input_path}")
-                logger.error(f"Expected: {display_path}")
-                logger.error("")
-                logger.error(
-                    "Re-classification requires raw scraped data (without existing classifications)."
-                )
-                logger.error(
-                    "If this is an old session, you may need to re-run the original search with scraping enabled."
-                )
+        # Validate all input paths exist
+        for input_str in args.input:
+            input_path = Path(input_str)
+            if not input_path.exists():
+                logger.error(f"Input path not found: {input_str}")
                 sys.exit(1)
+
+        # If multiple inputs provided, log merge info
+        if len(args.input) > 1:
+            logger.info(f"Merging {len(args.input)} sessions/files:")
+            for input_str in args.input:
+                logger.info(f"  - {input_str}")
 
         if args.no_classification:
             logger.error("--classify-only and --no-classification are mutually exclusive")
@@ -476,7 +456,9 @@ Examples:
     verbose = not args.quiet
 
     # Create search session
-    session = SearchSession(verbose=verbose)
+    session = SearchSession(
+        verbose=verbose, workflow=args.workflow, classify_only=args.classify_only
+    )
 
     if session:
         logger.info(f"Session directory: {session.session_dir}")
@@ -593,15 +575,42 @@ Examples:
 
         logger.info(f"Return only matches: {not args.return_all}")
 
-    # CLASSIFY-ONLY MODE: Load jobs from JSON
+    # CLASSIFY-ONLY MODE: Load jobs from JSON (or merge multiple sessions)
     if args.classify_only:
-        logger.info(f"Loading jobs from {args.input}...")
+        # Handle multiple inputs with SessionMerger
+        if len(args.input) > 1:
+            from src.session_merger import SessionMerger
 
-        with open(args.input, encoding="utf-8") as f:
-            raw_jobs = json.load(f)
+            merger = SessionMerger(verbose=verbose)
+            raw_jobs = merger.merge_sessions(args.input)
+
+            # Save merged data to new session for debugging and re-classification
+            session.save_scraped_jobs(raw_jobs)
+            logger.info(
+                f"✓ Merged data saved to session: {session.debug_dir / '02_scraped_jobs.json'}"
+            )
+        else:
+            # Single input - load directly
+            input_path = Path(args.input[0])
+
+            # If it's a directory, resolve to raw scraped data
+            if input_path.is_dir():
+                scraped_jobs_path = input_path / "debug" / "02_scraped_jobs.json"
+                if scraped_jobs_path.exists():
+                    input_file = scraped_jobs_path
+                    logger.info(f"Loading jobs from session: {input_path.name}")
+                else:
+                    logger.error(f"Raw scraped data not found in session: {input_path}")
+                    logger.error(f"Expected: {scraped_jobs_path}")
+                    sys.exit(1)
+            else:
+                input_file = input_path
+                logger.info(f"Loading jobs from file: {input_file}")
+
+            with open(input_file, encoding="utf-8") as f:
+                raw_jobs = json.load(f)
 
         total_jobs = len(raw_jobs)
-
         logger.info(f"✓ Loaded {total_jobs} raw jobs")
 
         # Extract and flatten job data (arbeitsort.ort -> ort, details.url -> url, etc.)
@@ -880,6 +889,14 @@ Examples:
             logger.warning(
                 f"  {len(failed_jobs)} job(s) could not be scraped (see CSV for details)"
             )
+
+        # Populate and save session info
+        session.search_term = args.was if not args.classify_only else "N/A"
+        session.location = args.wo if not args.classify_only else "N/A"
+        session.total_jobs = total_jobs
+        session.classified_jobs = len(classified_jobs)
+        session_info_path = session.save_session_info()
+        logger.info(f"✓ Session info saved to {session_info_path}")
 
     # Additional custom output paths (if specified)
     if args.output:
