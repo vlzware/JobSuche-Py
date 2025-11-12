@@ -21,6 +21,7 @@ dev = [
     "types-beautifulsoup4>=4.12.0",
     "types-pyyaml>=6.0.0",
     "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
     "pre-commit>=3.5.0",
     "coverage>=7.0.0",
 ]
