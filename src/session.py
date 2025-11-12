@@ -154,6 +154,13 @@ class SearchSession:
             # Sanitize label for filename
             safe_label = label.lower().replace(" ", "_").replace("/", "_")
             base_name = safe_label
+
+            # Check if file already exists and add counter to make it unique
+            counter = 1
+            original_base_name = base_name
+            while (self.debug_dir / f"{base_name}_full_response.json").exists():
+                base_name = f"{original_base_name}_{counter:02d}"
+                counter += 1
         else:
             # Count existing interaction files to generate unique name
             existing = list(self.debug_dir.glob("llm_interaction_*.json"))
