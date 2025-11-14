@@ -129,25 +129,69 @@ class BaseWorkflow(ABC):
 
         return classified_jobs, failed_jobs
 
-    def run_from_file(self, jobs: list[dict], show_statistics: bool = True, **kwargs) -> list[dict]:
+    def run_from_file(
+        self, jobs: list[dict], show_statistics: bool = True, resume: bool = True, **kwargs
+    ) -> list[dict]:
         """
         Run workflow on pre-loaded job data
 
         Args:
             jobs: Pre-loaded job data
             show_statistics: Whether to print statistics
+            resume: Whether to resume from checkpoint if exists (default: True)
             **kwargs: Additional workflow-specific parameters
 
         Returns:
             List of classified jobs
         """
-        if self.verbose:
-            print(f"\nProcessing {len(jobs)} pre-loaded jobs...")
-
         total_jobs = len(jobs)
+        jobs_to_process = jobs
+        partial_results = []
 
-        # Process with LLM
-        classified_jobs = self.process(jobs, **kwargs)
+        # Handle checkpoint resume
+        if self.session and resume:
+            checkpoint = self.session.load_checkpoint()
+            if checkpoint:
+                completed_refnrs = set(checkpoint.get("completed_jobs", []))
+                partial_results = self.session.load_partial_results()
+
+                # Filter out already-classified jobs
+                jobs_to_process = [
+                    job for job in jobs if job.get("refnr", "") not in completed_refnrs
+                ]
+
+                if self.verbose:
+                    print("\n✓ Resuming from checkpoint:")
+                    print(f"  - Already classified: {len(partial_results)} jobs")
+                    print(f"  - Remaining to classify: {len(jobs_to_process)} jobs")
+                    print(
+                        f"  - Batch {checkpoint.get('current_batch', 0)}/{checkpoint.get('total_batches', 0)}"
+                    )
+            else:
+                if self.verbose:
+                    print(f"\nProcessing {len(jobs)} pre-loaded jobs...")
+        elif self.session and not resume:
+            # Delete checkpoint if user wants fresh start
+            if self.session.has_checkpoint():
+                self.session.delete_checkpoint()
+                if self.verbose:
+                    print("\n✓ Checkpoint deleted - starting fresh classification")
+            if self.verbose:
+                print(f"\nProcessing {len(jobs)} pre-loaded jobs...")
+        else:
+            if self.verbose:
+                print(f"\nProcessing {len(jobs)} pre-loaded jobs...")
+
+        # Process remaining jobs with LLM (or skip if all done)
+        if jobs_to_process:
+            newly_classified = self.process(jobs_to_process, **kwargs)
+        else:
+            newly_classified = []
+            if self.verbose:
+                print("\n✓ All jobs already classified - nothing to do!")
+
+        # Combine partial results with newly classified
+        classified_jobs = partial_results + newly_classified
 
         # Analyze and report
         if show_statistics:

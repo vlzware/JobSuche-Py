@@ -340,6 +340,22 @@ python main.py --classify-only --workflow matching \
 
 The tool automatically deduplicates jobs by their reference number (refnr) before classification, ensuring each job is only processed once even if it appears in multiple search results.
 
+### Auto-Resume After Errors
+
+Classification automatically saves checkpoints after each mega-batch. If classification fails mid-process (LLM failure, API errors, network issues, etc.), simply re-run `--classify-only` and the same session to resume from where it left off:
+
+```bash
+# First run - fails at job 150/300
+python main.py --classify-only --input data/searches/20231020_142830
+
+# Re-run - automatically resumes from job 150
+python main.py --classify-only --input data/searches/20231020_142830
+```
+
+**Fresh restart:** Use `--no-resume` to discard checkpoint and restart classification.
+
+Checkpoint files (`debug/classification_checkpoint.json`, `debug/partial_classified_jobs.json`) are automatically cleaned up after successful completion.
+
 ---
 
 ## Known Limitations

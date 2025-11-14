@@ -567,6 +567,9 @@ class TestBaseWorkflow:
         """Should process pre-loaded jobs without gathering"""
         # Setup
         mock_llm_processor.classify_multi_category.return_value = classified_jobs
+        # Mock checkpoint methods to return no checkpoint (fresh start)
+        mock_session.load_checkpoint.return_value = None
+        mock_session.load_partial_results.return_value = []
 
         workflow = MultiCategoryWorkflow(
             user_profile=mock_user_profile,

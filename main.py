@@ -351,6 +351,11 @@ Examples:
         action="store_true",
         help="Include Weiterbildung/Ausbildung jobs (excluded by default)",
     )
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Ignore checkpoint and start fresh classification (deletes partial progress)",
+    )
     parser.add_argument("--quiet", action="store_true", help="Suppress progress output")
 
     # Parse arguments with better error handling
@@ -645,7 +650,11 @@ Examples:
                     session=session,
                     verbose=verbose,
                 )
-                classified_jobs = multi_workflow.process(jobs=jobs, batch_size=args.batch_size)
+                classified_jobs = multi_workflow.run_from_file(
+                    jobs=jobs,
+                    resume=not args.no_resume,
+                    batch_size=args.batch_size,
+                )
             elif args.workflow == "matching":
                 matching_workflow = MatchingWorkflow(
                     user_profile=user_profile,
@@ -653,8 +662,9 @@ Examples:
                     session=session,
                     verbose=verbose,
                 )
-                classified_jobs = matching_workflow.process(
+                classified_jobs = matching_workflow.run_from_file(
                     jobs=jobs,
+                    resume=not args.no_resume,
                     cv_content=cv_content,
                     perfect_job_description=args.perfect_job_description,
                     return_only_matches=not args.return_all,

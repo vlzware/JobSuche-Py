@@ -203,13 +203,18 @@ class TestClassifyOnlyMode:
         debug_dir.mkdir(parents=True)
 
         scraped_jobs_file = debug_dir / "02_scraped_jobs.json"
+        # Jobs need proper structure with details.success for extract_descriptions()
         test_jobs = [
             {
-                "titel": "Test Job",
-                "ort": "Berlin",
+                "beruf": "Test Job",
+                "arbeitsort": {"ort": "Berlin"},
                 "arbeitgeber": "Test Corp",
-                "text": "Job description",
-                "url": "https://example.com/job/123",
+                "refnr": "12345",
+                "details": {
+                    "success": True,
+                    "text": "Job description",
+                    "url": "https://example.com/job/123",
+                },
             }
         ]
         scraped_jobs_file.write_text(json.dumps(test_jobs))
@@ -247,15 +252,26 @@ class TestClassifyOnlyMode:
             mock_session.return_value = mock_session_instance
 
             mock_workflow_instance = MagicMock()
-            mock_workflow_instance.process.return_value = test_jobs
+            # Extract expected jobs (after extract_descriptions)
+            expected_jobs = [
+                {
+                    "titel": "Test Job",
+                    "ort": "Berlin",
+                    "arbeitgeber": "Test Corp",
+                    "text": "Job description",
+                    "url": "https://example.com/job/123",
+                    "refnr": "12345",
+                }
+            ]
+            mock_workflow_instance.run_from_file.return_value = expected_jobs
             mock_workflow.return_value = mock_workflow_instance
 
             # Execute
             main.main()
 
-            # Verify that the workflow was created and process was called
+            # Verify that the workflow was created and run_from_file was called
             mock_workflow.assert_called_once()
-            mock_workflow_instance.process.assert_called_once()
+            mock_workflow_instance.run_from_file.assert_called_once()
 
     def test_classify_only_accepts_json_file_directly(self, tmp_path):
         """--classify-only should accept JSON file path directly"""
@@ -263,13 +279,18 @@ class TestClassifyOnlyMode:
         os.environ["OPENROUTER_API_KEY"] = "test-key"
 
         json_file = tmp_path / "jobs.json"
+        # Jobs need proper structure with details.success for extract_descriptions()
         test_jobs = [
             {
-                "titel": "Test Job",
-                "ort": "Berlin",
+                "beruf": "Test Job",
+                "arbeitsort": {"ort": "Berlin"},
                 "arbeitgeber": "Test Corp",
-                "text": "Job description",
-                "url": "https://example.com/job/123",
+                "refnr": "12345",
+                "details": {
+                    "success": True,
+                    "text": "Job description",
+                    "url": "https://example.com/job/123",
+                },
             }
         ]
         json_file.write_text(json.dumps(test_jobs))
@@ -306,14 +327,25 @@ class TestClassifyOnlyMode:
             mock_session.return_value = mock_session_instance
 
             mock_workflow_instance = MagicMock()
-            mock_workflow_instance.process.return_value = test_jobs
+            # Extract expected jobs (after extract_descriptions)
+            expected_jobs = [
+                {
+                    "titel": "Test Job",
+                    "ort": "Berlin",
+                    "arbeitgeber": "Test Corp",
+                    "text": "Job description",
+                    "url": "https://example.com/job/123",
+                    "refnr": "12345",
+                }
+            ]
+            mock_workflow_instance.run_from_file.return_value = expected_jobs
             mock_workflow.return_value = mock_workflow_instance
 
             # Execute
             main.main()
 
             # Verify
-            mock_workflow_instance.process.assert_called_once()
+            mock_workflow_instance.run_from_file.assert_called_once()
 
     def test_classify_only_fails_on_missing_scraped_data(self, tmp_path):
         """--classify-only should fail if session dir lacks scraped data"""
@@ -380,15 +412,20 @@ class TestParameterConflicts:
         os.environ["OPENROUTER_API_KEY"] = "test-key"
 
         json_file = tmp_path / "jobs.json"
+        # Jobs need proper structure with details.success for extract_descriptions()
         json_file.write_text(
             json.dumps(
                 [
                     {
-                        "titel": "Job",
-                        "ort": "Berlin",
+                        "beruf": "Job",
+                        "arbeitsort": {"ort": "Berlin"},
                         "arbeitgeber": "Corp",
-                        "text": "Description",
-                        "url": "https://example.com",
+                        "refnr": "12345",
+                        "details": {
+                            "success": True,
+                            "text": "Description",
+                            "url": "https://example.com",
+                        },
                     }
                 ]
             )
@@ -422,14 +459,22 @@ class TestParameterConflicts:
             mock_session.return_value = mock_session_instance
 
             mock_workflow_instance = MagicMock()
-            mock_workflow_instance.process.return_value = []
+            # Extract expected jobs (after extract_descriptions)
+            expected_jobs = [
+                {
+                    "titel": "Job",
+                    "ort": "Berlin",
+                    "arbeitgeber": "Corp",
+                    "text": "Description",
+                    "url": "https://example.com",
+                    "refnr": "12345",
+                }
+            ]
+            mock_workflow_instance.run_from_file.return_value = expected_jobs
             mock_workflow.return_value = mock_workflow_instance
 
-            # Should not raise validation error (but may exit with 0)
-            with pytest.raises(SystemExit) as exc_info:
-                main.main()
-            # Exit 0 is OK (no jobs, but not a validation error)
-            assert exc_info.value.code == 0
+            # Should not raise validation error
+            main.main()
 
 
 class TestAPIKeyValidation:

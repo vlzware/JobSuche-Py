@@ -703,11 +703,35 @@ def classify_jobs_mega_batch(
             )
             classified_jobs.extend(batch_classified)
 
+            # Save checkpoint after each successful mega-batch
+            if session:
+                session.save_partial_results(batch_classified)
+
+                # Calculate completed and pending refnrs
+                completed_refnrs = [job.get("refnr", "") for job in classified_jobs]
+                pending_jobs = jobs[(i + max_jobs_per_batch) :]
+                pending_refnrs = [job.get("refnr", "") for job in pending_jobs]
+
+                session.save_checkpoint(
+                    completed_refnrs=completed_refnrs,
+                    pending_refnrs=pending_refnrs,
+                    current_batch=batch_num,
+                    total_batches=num_batches,
+                )
+                logger.info(
+                    f"✓ Checkpoint saved ({len(classified_jobs)}/{len(jobs)} jobs complete)"
+                )
+
         logger.info(f"{'=' * 60}")
         logger.info(
             f"✓ Completed all {num_batches} mega-batches ({len(classified_jobs)} jobs total)"
         )
         logger.info(f"{'=' * 60}")
+
+        # Delete checkpoint after successful completion
+        if session:
+            session.delete_checkpoint()
+            logger.info("✓ Classification complete - checkpoint cleaned up")
 
         return classified_jobs
 

@@ -387,3 +387,105 @@ Structure:
   ├── jobs_classified.json
   └── jobs_all.csv
 """.strip()
+
+    # Checkpoint management for resumable classification
+
+    def has_checkpoint(self) -> bool:
+        """Check if a classification checkpoint exists"""
+        checkpoint_file = self.debug_dir / "classification_checkpoint.json"
+        return checkpoint_file.exists()
+
+    def save_checkpoint(
+        self,
+        completed_refnrs: list[str],
+        pending_refnrs: list[str],
+        current_batch: int,
+        total_batches: int,
+    ):
+        """
+        Save classification progress checkpoint
+
+        Args:
+            completed_refnrs: List of refnr values for jobs that have been classified
+            pending_refnrs: List of refnr values for jobs still to be classified
+            current_batch: Current batch number (0-indexed)
+            total_batches: Total number of batches
+        """
+        checkpoint_file = self.debug_dir / "classification_checkpoint.json"
+        checkpoint_data = {
+            "completed_jobs": completed_refnrs,
+            "pending_jobs": pending_refnrs,
+            "current_batch": current_batch,
+            "total_batches": total_batches,
+            "last_updated": datetime.now().isoformat(),
+        }
+        with open(checkpoint_file, "w", encoding="utf-8") as f:
+            json.dump(checkpoint_data, f, ensure_ascii=False, indent=2)
+
+    def load_checkpoint(self) -> dict | None:
+        """
+        Load classification checkpoint if it exists
+
+        Returns:
+            Checkpoint data dict or None if no checkpoint exists
+        """
+        checkpoint_file = self.debug_dir / "classification_checkpoint.json"
+        if not checkpoint_file.exists():
+            return None
+
+        with open(checkpoint_file, encoding="utf-8") as f:
+            result: dict = json.load(f)
+            return result
+
+    def save_partial_results(self, classified_jobs: list[dict]):
+        """
+        Save partial classification results (append mode)
+
+        Args:
+            classified_jobs: List of newly classified jobs to append
+        """
+        partial_file = self.debug_dir / "partial_classified_jobs.json"
+
+        # Load existing partial results if any
+        existing_results: list[dict] = []
+        if partial_file.exists():
+            with open(partial_file, encoding="utf-8") as f:
+                existing_results = json.load(f)
+
+        # Append new results
+        existing_results.extend(classified_jobs)
+
+        # Save combined results
+        with open(partial_file, "w", encoding="utf-8") as f:
+            json.dump(existing_results, f, ensure_ascii=False, indent=2)
+
+    def load_partial_results(self) -> list[dict]:
+        """
+        Load partial classification results if they exist
+
+        Returns:
+            List of partially classified jobs, or empty list if no partial results
+        """
+        partial_file = self.debug_dir / "partial_classified_jobs.json"
+        if not partial_file.exists():
+            return []
+
+        with open(partial_file, encoding="utf-8") as f:
+            result: list[dict] = json.load(f)
+            return result
+
+    def delete_checkpoint(self):
+        """
+        Delete checkpoint and partial results files
+
+        This is used when starting a fresh classification (--no-resume)
+        or when classification completes successfully.
+        """
+        checkpoint_file = self.debug_dir / "classification_checkpoint.json"
+        partial_file = self.debug_dir / "partial_classified_jobs.json"
+
+        if checkpoint_file.exists():
+            checkpoint_file.unlink()
+
+        if partial_file.exists():
+            partial_file.unlink()
