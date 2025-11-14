@@ -294,6 +294,8 @@ python main.py --was "Softwareentwickler" --wo "Berlin" \
 
 Check [OpenRouter](https://openrouter.ai/) for current pricing, models, ratings and options.
 
+**Reasoning and Reasoning Effort:** Use `--reasoning-effort high` with compatible models (Gemini Pro, Claude) for better accuracy at higher cost. When using a reasoning model, the thinking process is always saved to `debug/*_thinking.md`.
+
 ---
 
 ## How It Works
