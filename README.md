@@ -348,7 +348,7 @@ The tool automatically deduplicates jobs by their reference number (refnr) befor
   - Failed scrapes are tracked in `jobs_failed.csv` with error types
   - Common issues: JS_REQUIRED (Single Page Applications), SHORT_CONTENT, TIMEOUT
 
-Currently, in the searches I made, the biggest culprit is germantechjobs.de, which is an SPA and even has some bot protection. From a recent search, I got 112 jobs scraped, from a total of 149. Almost all (31) of the failed jobs (37) were from this site.
+From my personal testing with tech-related criteria, the biggest culprit is germantechjobs.de, which is an SPA and even has some bot protection. From a recent search, I got 112 jobs scraped, from a total of 149. Almost all (31) of the failed jobs (37) were from this site. In another search, with different search criteria (city, job title, etc.), I got only 21 errors, from a total of 511 jobs scraped, so your mileage may vary.
 
 ---
 
