@@ -5,66 +5,11 @@ Tests for resume functionality - resuming classification after interruption
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.session import SearchSession
 from src.workflows import MultiCategoryWorkflow
 
-
-@pytest.fixture
-def sample_jobs():
-    """Sample jobs for testing"""
-    return [
-        {
-            "titel": "Python Developer",
-            "ort": "Berlin",
-            "arbeitgeber": "Tech Corp",
-            "text": "Python, Django, REST",
-            "url": "http://example.com/1",
-            "refnr": "REF001",
-        },
-        {
-            "titel": "Java Developer",
-            "ort": "München",
-            "arbeitgeber": "Enterprise GmbH",
-            "text": "Java, Spring Boot",
-            "url": "http://example.com/2",
-            "refnr": "REF002",
-        },
-        {
-            "titel": "DevOps Engineer",
-            "ort": "Hamburg",
-            "arbeitgeber": "Cloud Solutions",
-            "text": "AWS, Terraform, Docker",
-            "url": "http://example.com/3",
-            "refnr": "REF003",
-        },
-    ]
-
-
-@pytest.fixture
-def classified_jobs():
-    """Sample classified jobs"""
-    return [
-        {
-            "titel": "Python Developer",
-            "ort": "Berlin",
-            "arbeitgeber": "Tech Corp",
-            "text": "Python, Django, REST",
-            "url": "http://example.com/1",
-            "refnr": "REF001",
-            "categories": ["Python", "Backend"],
-        },
-        {
-            "titel": "Java Developer",
-            "ort": "München",
-            "arbeitgeber": "Enterprise GmbH",
-            "text": "Java, Spring Boot",
-            "url": "http://example.com/2",
-            "refnr": "REF002",
-            "categories": ["Java", "Backend"],
-        },
-    ]
+# Note: sample_jobs and classified_jobs fixtures are now in conftest.py
+# These tests extend them with refnr fields where needed
 
 
 class TestCheckpointManagement:

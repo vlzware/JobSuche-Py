@@ -10,85 +10,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.data import JobGatherer
-from src.llm import LLMProcessor
-from src.preferences import UserProfile
 from src.workflows import (
     BrainstormWorkflow,
     MatchingWorkflow,
     MultiCategoryWorkflow,
 )
 
-
-@pytest.fixture
-def sample_jobs():
-    """Sample job data for testing"""
-    return [
-        {
-            "titel": "Python Developer",
-            "ort": "Berlin",
-            "arbeitgeber": "Tech Corp",
-            "text": "Python, Django, REST APIs, Docker",
-            "url": "https://example.com/job/1",
-        },
-        {
-            "titel": "Java Backend Engineer",
-            "ort": "München",
-            "arbeitgeber": "Enterprise GmbH",
-            "text": "Java, Spring Boot, Microservices, Kubernetes",
-            "url": "https://example.com/job/2",
-        },
-        {
-            "titel": "DevOps Engineer",
-            "ort": "Hamburg",
-            "arbeitgeber": "Cloud Solutions",
-            "text": "AWS, Terraform, CI/CD, Docker, Kubernetes",
-            "url": "https://example.com/job/3",
-        },
-    ]
-
-
-@pytest.fixture
-def classified_jobs():
-    """Sample classified job data"""
-    return [
-        {
-            "titel": "Python Developer",
-            "ort": "Berlin",
-            "arbeitgeber": "Tech Corp",
-            "text": "Python, Django, REST APIs",
-            "categories": ["Python", "Backend"],
-            "url": "https://example.com/job/1",
-        },
-        {
-            "titel": "Java Backend Engineer",
-            "ort": "München",
-            "arbeitgeber": "Enterprise GmbH",
-            "text": "Java, Spring Boot, Microservices",
-            "categories": ["Java", "Backend"],
-            "url": "https://example.com/job/2",
-        },
-    ]
-
-
-@pytest.fixture
-def mock_user_profile():
-    """Mock UserProfile"""
-    profile = MagicMock(spec=UserProfile)
-    profile.get_categories.return_value = ["Python", "Java", "DevOps", "Andere"]
-    profile.get_category_definitions.return_value = {
-        "Python": "Python development roles",
-        "Java": "Java development roles",
-        "DevOps": "DevOps and infrastructure roles",
-    }
-    profile.has_cv.return_value = False
-    return profile
-
-
-@pytest.fixture
-def mock_llm_processor():
-    """Mock LLMProcessor"""
-    processor = MagicMock(spec=LLMProcessor)
-    return processor
+# Note: Fixtures are now in conftest.py
+# - sample_jobs, classified_jobs
+# - mock_user_profile, mock_llm_processor, mock_session
 
 
 @pytest.fixture
@@ -96,15 +26,6 @@ def mock_job_gatherer():
     """Mock JobGatherer"""
     gatherer = MagicMock(spec=JobGatherer)
     return gatherer
-
-
-@pytest.fixture
-def mock_session(tmp_path):
-    """Mock SearchSession"""
-    session = MagicMock()
-    session.session_dir = tmp_path / "session"
-    session.debug_dir = tmp_path / "session/debug"
-    return session
 
 
 class TestMultiCategoryWorkflow:
@@ -437,13 +358,13 @@ class TestMatchingWorkflow:
         call_args = mock_llm_processor.classify_matching.call_args
         assert call_args[1]["return_only_matches"] is False
 
-    def test_raises_error_without_inputs(self, sample_jobs, mock_llm_processor, mock_session):
+    def test_raises_error_without_inputs(
+        self, sample_jobs, mock_user_profile, mock_llm_processor, mock_session
+    ):
         """Should raise error when neither CV nor perfect job description provided"""
         # Setup
-        profile = MagicMock(spec=UserProfile)
-
         workflow = MatchingWorkflow(
-            user_profile=profile,
+            user_profile=mock_user_profile,
             llm_processor=mock_llm_processor,
             session=mock_session,
             verbose=False,
@@ -458,11 +379,13 @@ class TestMatchingWorkflow:
         ):
             workflow.process(jobs=sample_jobs)
 
-    def test_raises_error_with_empty_strings(self, sample_jobs, mock_llm_processor, mock_session):
+    def test_raises_error_with_empty_strings(
+        self, sample_jobs, mock_user_profile, mock_llm_processor, mock_session
+    ):
         """Should raise error when inputs are empty/whitespace strings"""
         # Setup
         workflow = MatchingWorkflow(
-            user_profile=MagicMock(spec=UserProfile),
+            user_profile=mock_user_profile,
             llm_processor=mock_llm_processor,
             session=mock_session,
             verbose=False,

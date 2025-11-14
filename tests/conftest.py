@@ -6,6 +6,17 @@ from pathlib import Path
 
 import pytest
 
+from src.config.loader import Config
+from tests.test_helpers import (
+    create_classified_jobs,
+    create_mock_http_client,
+    create_mock_llm_processor,
+    create_mock_session,
+    create_mock_user_profile,
+    create_sample_jobs,
+    create_test_config,
+)
+
 
 def pytest_configure(config):
     """Register custom markers"""
@@ -35,9 +46,12 @@ def load_fixture(fixtures_dir):
 
 @pytest.fixture
 def test_config():
-    """Return a test configuration dictionary"""
-    return {
-        "scraper": {
+    """Return a test configuration dictionary with sensible defaults"""
+    config = create_test_config()
+
+    # Merge in scraper-specific config for backward compatibility
+    config["scraper"].update(
+        {
             "html_cleanup": {"remove_tags": ["script", "style", "nav", "header", "footer"]},
             "arbeitsagentur": {"content_selector": "jb-steadetail-beschreibung"},
             "external": {
@@ -48,7 +62,50 @@ def test_config():
                     "id_pattern": "(content|job|detail|main)",
                 }
             },
-            "headers": {"user_agent": "JobSuche-Test/1.0"},
-        },
-        "api": {"timeouts": {"arbeitsagentur_details": 10, "external_url": 15}},
-    }
+        }
+    )
+    config["api"]["timeouts"].update({"arbeitsagentur_details": 10, "external_url": 15})
+
+    return config
+
+
+@pytest.fixture
+def config_obj(test_config):
+    """Provide a Config object from test_config"""
+    return Config(test_config)
+
+
+@pytest.fixture
+def mock_http_client():
+    """Provide a mock HTTP client with successful response"""
+    return create_mock_http_client(status_code=200)
+
+
+@pytest.fixture
+def mock_session(tmp_path):
+    """Provide a mock SearchSession"""
+    return create_mock_session(tmp_path)
+
+
+@pytest.fixture
+def mock_user_profile():
+    """Provide a mock UserProfile"""
+    return create_mock_user_profile()
+
+
+@pytest.fixture
+def mock_llm_processor():
+    """Provide a mock LLMProcessor"""
+    return create_mock_llm_processor()
+
+
+@pytest.fixture
+def sample_jobs():
+    """Provide sample job data for testing"""
+    return create_sample_jobs()
+
+
+@pytest.fixture
+def classified_jobs():
+    """Provide sample classified job data for testing"""
+    return create_classified_jobs()
