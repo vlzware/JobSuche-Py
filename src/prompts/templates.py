@@ -68,65 +68,6 @@ Evaluation principles:
 CV_MATCHING_TEMPLATE = CV_PROFILE_TEMPLATE + "\n" + CV_CLASSIFICATION_CRITERIA
 
 
-# Brainstorm prompt templates for job title discovery
-BRAINSTORM_PROMPT_TEMPLATE = """You are helping a German job seeker discover relevant "Berufsbezeichnungen" (job titles) to search for on Arbeitsagentur.
-
-============================================================
-CANDIDATE'S CV
-============================================================
-{cv_content}
-============================================================
-
-============================================================
-WHAT MOTIVATES THE CANDIDATE
-============================================================
-{motivation_description}
-============================================================
-
-Based on the CV and motivation, provide 10-15 relevant German "Berufsbezeichnungen" sorted from best match to worst match.
-
-Output ONLY a simple numbered list of job titles. No explanations, no introductions, no conclusions, no additional text.
-
-Example format:
-1. Job Title One
-2. Job Title Two
-3. Job Title Three"""
-
-BRAINSTORM_PROMPT_CV_ONLY_TEMPLATE = """You are helping a German job seeker discover relevant "Berufsbezeichnungen" (job titles) to search for on Arbeitsagentur.
-
-============================================================
-CANDIDATE'S CV
-============================================================
-{cv_content}
-============================================================
-
-Based on the CV, provide 10-15 relevant German "Berufsbezeichnungen" sorted from best match to worst match.
-
-Output ONLY a simple numbered list of job titles. No explanations, no introductions, no conclusions, no additional text.
-
-Example format:
-1. Job Title One
-2. Job Title Two
-3. Job Title Three"""
-
-BRAINSTORM_PROMPT_MOTIVATION_ONLY_TEMPLATE = """You are helping a German job seeker discover relevant "Berufsbezeichnungen" (job titles) to search for on Arbeitsagentur.
-
-============================================================
-WHAT MOTIVATES THE CANDIDATE
-============================================================
-{motivation_description}
-============================================================
-
-Based on the motivation, provide 10-15 relevant German "Berufsbezeichnungen" sorted from best match to worst match.
-
-Output ONLY a simple numbered list of job titles. No explanations, no introductions, no conclusions, no additional text.
-
-Example format:
-1. Job Title One
-2. Job Title Two
-3. Job Title Three"""
-
-
 def load_custom_prompts(config_path: str | None = None) -> dict[str, str]:
     """
     Load custom prompt templates from YAML config file.

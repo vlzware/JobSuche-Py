@@ -100,6 +100,8 @@ class OpenRouterClient:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
+                "HTTP-Referer": "https://github.com/vlzware/JobSuche-Py",
+                "X-Title": "JobSuche-Py",
             },
             json=payload,
             timeout=timeout,

@@ -42,7 +42,7 @@ class JobGatherer:
         Args:
             session: Optional SearchSession for saving artifacts
             verbose: Whether to print progress messages
-            database_path: Path to job database (default: data/database/jobs_global.json)
+            database_path: Path to job database (default: data/database/jobs.json)
         """
         self.session = session
         self.verbose = verbose
@@ -103,17 +103,37 @@ class JobGatherer:
             self.database.load()
             logger.info(f"Database loaded: {len(self.database.jobs)} existing jobs")
 
-            # Use incremental fetch with default 7 days if not specified
+            # Validate geographic context - database is locked to one area
+            is_valid, error_msg = self.database.validate_geographic_context(wo, umkreis)
+            if not is_valid:
+                logger.error(error_msg)
+                raise ValueError("Geographic context mismatch - see error above")
+
+            # Check if this search criteria has been used before
+            search_params = {"was": was, "wo": wo, "umkreis": umkreis}
+            has_history = self.database.has_search_history(search_params)
+
+            # Only use incremental fetch if we've searched with these exact criteria before
             if veroeffentlichtseit is None:
-                veroeffentlichtseit = config.get("search.defaults.veroeffentlichtseit", 7)
-                logger.warning(
-                    f"⚠️  Performing incremental fetch (jobs published in last {veroeffentlichtseit} days)"
-                )
+                if has_history:
+                    # Repeated search - use incremental fetch
+                    veroeffentlichtseit = config.get("search.defaults.veroeffentlichtseit", 7)
+                    logger.warning(
+                        f"⚠️  Performing incremental fetch (jobs published in last {veroeffentlichtseit} days)"
+                    )
+                else:
+                    # New search criteria - do full fetch
+                    logger.info(
+                        f"🔍 New search criteria detected (was='{was}') - performing FULL fetch"
+                    )
+                    # veroeffentlichtseit stays None for full fetch
         else:
             if use_database:
                 logger.info(
                     f"No existing database found at {self.database.database_path} - performing full fetch"
                 )
+                # Set geographic context on first search
+                self.database.set_geographic_context(wo, umkreis)
             else:
                 logger.info("Database disabled - performing full fetch")
 

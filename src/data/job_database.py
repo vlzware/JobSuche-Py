@@ -39,7 +39,7 @@ class JobDatabase:
             database_path: Path to database file. If None, uses default location.
         """
         if database_path is None:
-            database_path = Path("data/database/jobs_global.json")
+            database_path = Path("data/database/jobs.json")
 
         self.database_path = Path(database_path)
         self.jobs: dict[str, dict] = {}  # Keyed by refnr
@@ -48,6 +48,7 @@ class JobDatabase:
             "last_updated": None,
             "total_jobs": 0,
             "active_jobs": 0,
+            "geographic_context": None,  # Locked on first search: {wo, umkreis}
         }
 
         # Track changes in current session
@@ -243,3 +244,88 @@ class JobDatabase:
     def get_all_jobs(self) -> list[dict]:
         """Get all jobs in database."""
         return list(self.jobs.values())
+
+    def set_geographic_context(self, wo: str | None, umkreis: int | None):
+        """
+        Set the geographic context for this database (called on first search).
+
+        Args:
+            wo: Location (city name or None for all Germany)
+            umkreis: Search radius in km
+        """
+        self.metadata["geographic_context"] = {"wo": wo, "umkreis": umkreis}
+        logger.info(f"Geographic context set: wo={wo}, umkreis={umkreis}km")
+
+    def validate_geographic_context(self, wo: str | None, umkreis: int | None) -> tuple[bool, str]:
+        """
+        Validate that search parameters match the database's geographic context.
+
+        Args:
+            wo: Location being searched
+            umkreis: Search radius being used
+
+        Returns:
+            Tuple of (is_valid, error_message). If valid, error_message is empty.
+        """
+        stored_context = self.metadata.get("geographic_context")
+
+        # No context set yet - this is the first search
+        if stored_context is None:
+            return True, ""
+
+        stored_wo = stored_context.get("wo")
+        stored_umkreis = stored_context.get("umkreis")
+
+        # Check if geographic parameters match
+        if wo != stored_wo or umkreis != stored_umkreis:
+            # Format location strings for error message
+            stored_location = (
+                f"{stored_wo} ({stored_umkreis}km radius)"
+                if stored_wo
+                else f"All Germany ({stored_umkreis}km radius)"
+            )
+            new_location = (
+                f"{wo} ({umkreis}km radius)" if wo else f"All Germany ({umkreis}km radius)"
+            )
+
+            error_msg = (
+                f"\n{'='*80}\n"
+                f"ERROR: Geographic context mismatch\n"
+                f"{'='*80}\n"
+                f"Database location: {stored_location}\n"
+                f"Your search:       {new_location}\n"
+                f"\n"
+                f"This database is locked to a specific geographic area.\n"
+                f"Changing location or radius requires a fresh database.\n"
+                f"\n"
+                f"Options:\n"
+                f"  1. Delete database: rm {self.database_path}\n"
+                f"  2. Use different folder for different area\n"
+                f"\n"
+                f"Design: One database = one geographic context (see CLAUDE.md)\n"
+                f"{'='*80}\n"
+            )
+            return False, error_msg
+
+        return True, ""
+
+    def has_search_history(self, search_params: dict) -> bool:
+        """
+        Check if this search criteria has been used before.
+
+        Args:
+            search_params: Search parameters (was, wo, umkreis)
+
+        Returns:
+            True if any jobs were found with these exact search parameters
+        """
+        search_was = search_params.get("was")
+        search_wo = search_params.get("wo")
+
+        for job in self.jobs.values():
+            found_in_searches = job.get("found_in_searches", [])
+            for search in found_in_searches:
+                if search.get("was") == search_was and search.get("wo") == search_wo:
+                    return True
+
+        return False

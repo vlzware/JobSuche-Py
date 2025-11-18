@@ -64,7 +64,7 @@ class LLMProcessor:
         # Load custom prompts if available
         self.custom_prompts = load_custom_prompts()
 
-    def classify_multi_category(
+    def _classify_internal(
         self,
         jobs: list[dict],
         categories: list[str],
@@ -73,10 +73,7 @@ class LLMProcessor:
         extra_api_params: dict | None = None,
     ) -> list[dict]:
         """
-        Classify jobs into multiple categories
-
-        This is the standard classification workflow - assigns each job
-        to one or more categories from the provided list.
+        Internal classification method used by matching workflow
 
         Args:
             jobs: List of jobs to classify
@@ -203,8 +200,8 @@ class LLMProcessor:
         if return_only_matches:
             logger.info("  Will return only Excellent and Good matches")
 
-        # Classify using the multi-category infrastructure
-        classified = self.classify_multi_category(
+        # Classify using the internal classification method
+        classified = self._classify_internal(
             jobs=jobs,
             categories=categories,
             category_definitions=category_definitions,

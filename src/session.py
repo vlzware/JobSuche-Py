@@ -265,16 +265,14 @@ class SearchSession:
         return str(file_path)
 
     def save_csv_export(self, jobs: list[dict]):
-        """Save CSV export of jobs with truncation indicator"""
+        """Save CSV export of jobs"""
         import csv
 
         filename = config.get("paths.files.output.csv_export", "jobs_all.csv")
         file_path = self.session_dir / filename
         with open(file_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(
-                ["Titel", "Ort", "Arbeitgeber", "Categories", "Truncated", "Original_Length", "URL"]
-            )
+            writer.writerow(["Titel", "Ort", "Arbeitgeber", "Categories", "URL"])
 
             for job in jobs:
                 writer.writerow(
@@ -283,8 +281,6 @@ class SearchSession:
                         job.get("ort", ""),
                         job.get("arbeitgeber", ""),
                         ", ".join(job.get("categories", [])),
-                        "YES" if job.get("_truncated", False) else "NO",
-                        job.get("_original_text_length", "N/A"),
                         job.get("url", ""),
                     ]
                 )
@@ -325,31 +321,12 @@ class SearchSession:
 
     def save_session_info(self) -> str:
         """
-        Save session metadata to a JSON file with abbreviated workflow name
-
-        The filename indicates the workflow type:
-        - MC = MultiCategory workflow
-        - MA = Matching workflow
-        - BR = Brainstorm workflow
-        - Appends _CO for classify-only sessions
+        Save session metadata to a JSON file
 
         Returns:
             Path to the saved session info file
         """
-        # Determine workflow abbreviation
-        workflow_abbrev_map = {
-            "multi-category": "MC",
-            "matching": "MA",
-            "brainstorm": "BR",
-        }
-        workflow_abbrev = workflow_abbrev_map.get(self.workflow or "", "UNK")
-
-        # Append CO for classify-only
-        if self.classify_only:
-            workflow_abbrev += "_CO"
-
-        # Build filename
-        filename = f"session_info_{workflow_abbrev}.json"
+        filename = "session_info.json"
         file_path = self.session_dir / filename
 
         # Prepare metadata

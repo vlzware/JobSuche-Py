@@ -6,14 +6,14 @@ Automatically categorizes job listings into predefined categories
 import json
 import os
 import re
-from pathlib import Path
-from typing import TYPE_CHECKING, Optional, TypedDict
+from typing import TYPE_CHECKING, Optional
 
 from .config import Config, config
 from .exceptions import (
     EmptyJobContentError,
     LLMDataIntegrityError,
     LLMResponseError,
+    TruncationError,
 )
 from .http_client import HttpClient, default_http_client
 from .logging_config import get_module_logger
@@ -22,93 +22,6 @@ logger = get_module_logger("classifier")
 
 if TYPE_CHECKING:
     from .session import SearchSession
-
-
-class TruncationInfo(TypedDict):
-    """Information about a truncated job"""
-
-    index: int
-    job_id: str
-    title: str
-    original_length: int
-    truncated_length: int
-    loss: int
-
-
-class TruncationStats(TypedDict):
-    """Statistics about job truncations"""
-
-    jobs_truncated: int
-    total_jobs: int
-    truncated_jobs: list[TruncationInfo]
-
-
-try:
-    import yaml
-
-    YAML_AVAILABLE = True
-except ImportError:
-    YAML_AVAILABLE = False
-
-
-DEFAULT_CATEGORIES = [
-    "Projektleitung",
-    "Agile Projektentwicklung",
-    "Java",
-    "Python",
-    "TypeScript",
-    "C#/.NET",
-    "Industrie",
-    "Andere",
-]
-
-
-def load_category_config(config_path: str | None = None) -> tuple[list[str] | None, dict[str, str]]:
-    """
-    Load category configuration from YAML config file.
-
-    Args:
-        config_path: Path to the categories config file (defaults to value from paths_config.yaml)
-
-    Returns:
-        Tuple of (categories_list, definitions_dict):
-        - categories_list: List of category names from config (None if not found/available)
-        - definitions_dict: Dictionary mapping category names to descriptions
-    """
-    if not YAML_AVAILABLE:
-        return (None, {})
-
-    if config_path is None:
-        config_path = config.get("paths.files.categories", "categories.yaml")
-
-    config_file = Path(config_path)
-    if not config_file.exists():
-        return (None, {})
-
-    try:
-        with open(config_file, encoding="utf-8") as f:
-            categories_config = yaml.safe_load(f)
-
-        if not categories_config or "categories" not in categories_config:
-            return (None, {})
-
-        categories_list = []
-        definitions = {}
-
-        # Extract categories and their optional descriptions
-        for cat_item in categories_config["categories"]:
-            if isinstance(cat_item, dict) and "name" in cat_item:
-                cat_name = cat_item["name"]
-                categories_list.append(cat_name)
-
-                # Extract description if present
-                if cat_item.get("description"):
-                    definitions[cat_name] = cat_item["description"].strip()
-
-        return (categories_list if categories_list else None, definitions)
-    except Exception as e:
-        logger.warning(f"Could not load category config from {config_path}: {e}")
-        return (None, {})
 
 
 def get_fallback_category(categories: list[str]) -> str:
@@ -283,7 +196,7 @@ Return format example: ["Java", "Agile Projektentwicklung"]
 
 def classify_jobs(
     jobs: list[dict],
-    categories: list[str] | None = None,
+    categories: list[str],
     api_key: str | None = None,
     model: str | None = None,
     verbose: bool = True,
@@ -316,17 +229,6 @@ def classify_jobs(
     if model is None:
         model = config_obj.get("llm.models.default", "google/gemini-2.5-flash")
 
-    # Load category config (both list and definitions)
-    config_categories, config_definitions = load_category_config()
-
-    # Use provided categories, or config categories, or default categories
-    if categories is None:
-        categories = config_categories if config_categories else DEFAULT_CATEGORIES
-
-    # Use provided definitions, or config definitions
-    if category_definitions is None:
-        category_definitions = config_definitions
-
     if api_key is None:
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
@@ -345,9 +247,13 @@ def classify_jobs(
         original_len = len(job_text)
         was_truncated = original_len > max_chars
 
-        # Warn about truncation
+        # Fail on truncation - no silent errors!
         if was_truncated:
-            logger.warning(f"      ⚠️  Truncated: {original_len:,} → {max_chars:,} chars")
+            job_id = job.get("refnr", "N/A")
+            logger.error(f"      ❌ Job text truncated: {original_len:,} → {max_chars:,} chars")
+            raise TruncationError(
+                job_id=str(job_id), original_length=original_len, truncated_length=max_chars
+            )
 
         if not job_text:
             job_id = job.get("refnr", "N/A")
@@ -375,15 +281,6 @@ def classify_jobs(
 
         job_copy = job.copy()
         job_copy["categories"] = matched_categories
-
-        # Add truncation metadata
-        if was_truncated:
-            job_copy["was_truncated"] = True
-            job_copy["original_length"] = original_len
-            job_copy["truncated_to"] = max_chars
-        else:
-            job_copy["was_truncated"] = False
-
         classified_jobs.append(job_copy)
 
     return classified_jobs
@@ -391,7 +288,7 @@ def classify_jobs(
 
 def classify_jobs_batch(
     jobs: list[dict],
-    categories: list[str] | None = None,
+    categories: list[str],
     api_key: str | None = None,
     model: str | None = None,
     batch_size: int = 5,
@@ -430,17 +327,6 @@ def classify_jobs_batch(
     if model is None:
         model = config_obj.get("llm.models.default", "google/gemini-2.5-flash")
 
-    # Load category config (both list and definitions)
-    config_categories, config_definitions = load_category_config()
-
-    # Use provided categories, or config categories, or default categories
-    if categories is None:
-        categories = config_categories if config_categories else DEFAULT_CATEGORIES
-
-    # Use provided definitions, or config definitions
-    if category_definitions is None:
-        category_definitions = config_definitions
-
     if api_key is None:
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
@@ -463,36 +349,28 @@ def classify_jobs_batch(
 
         max_chars_batch = config_obj.get("processing.limits.job_text_batch", 1000)
         jobs_text = ""
-        truncated_jobs = []
 
         for idx, job in enumerate(batch):
             job_id = f"JOB_{idx:03d}"
             text = job.get("text", "")
             original_len = len(text)
 
-            # Track truncation
+            # Fail on truncation - no silent errors!
             if original_len > max_chars_batch:
-                truncated_jobs.append(
-                    {
-                        "id": job_id,
-                        "title": job.get("titel", "N/A"),
-                        "original_len": original_len,
-                        "truncated_to": max_chars_batch,
-                    }
+                ref_nr = job.get("refnr", "N/A")
+                title = job.get("titel", "N/A")
+                logger.error(
+                    f"❌ Job '{title}' would be truncated: "
+                    f"{original_len:,} → {max_chars_batch:,} chars"
+                )
+                raise TruncationError(
+                    job_id=str(ref_nr),
+                    original_length=original_len,
+                    truncated_length=max_chars_batch,
                 )
 
             jobs_text += f"\n[{job_id}] {job.get('titel', 'N/A')}\n"
-            jobs_text += text[:max_chars_batch] + "\n"
-
-        # Warn about truncated jobs
-        if truncated_jobs:
-            logger.warning(f"  ⚠️  WARNING: {len(truncated_jobs)}/{len(batch)} jobs truncated:")
-            for t in truncated_jobs[:3]:  # Show first 3
-                logger.warning(
-                    f"      • {t['title']}: {t['original_len']:,} → {t['truncated_to']:,} chars"
-                )
-            if len(truncated_jobs) > 3:
-                logger.warning(f"      ... and {len(truncated_jobs) - 3} more")
+            jobs_text += text + "\n"
 
         prompt = f"""Classify these German job descriptions into categories: {categories_str}
 {guidance}
@@ -575,9 +453,6 @@ Return ONLY the lines with job IDs and categories, nothing else.
                     missing_indices=missing_jobs,
                 )
 
-            # Create truncation lookup
-            truncation_lookup = {t["id"]: t for t in truncated_jobs}
-
             # Assign results to jobs
             for idx, job in enumerate(batch):
                 job_copy = job.copy()
@@ -588,17 +463,6 @@ Return ONLY the lines with job IDs and categories, nothing else.
                         f"missing_jobs check! This should never happen."
                     )
                 job_copy["categories"] = batch_results[idx]
-
-                # Add truncation metadata
-                job_id = f"JOB_{idx:03d}"
-                if job_id in truncation_lookup:
-                    t = truncation_lookup[job_id]
-                    job_copy["was_truncated"] = True
-                    job_copy["original_length"] = t["original_len"]
-                    job_copy["truncated_to"] = t["truncated_to"]
-                else:
-                    job_copy["was_truncated"] = False
-
                 classified_jobs.append(job_copy)
 
         except Exception as e:
@@ -611,7 +475,7 @@ Return ONLY the lines with job IDs and categories, nothing else.
 
 def classify_jobs_mega_batch(
     jobs: list[dict],
-    categories: list[str] | None = None,
+    categories: list[str],
     api_key: str | None = None,
     model: str | None = None,
     verbose: bool = True,
@@ -652,17 +516,6 @@ def classify_jobs_mega_batch(
 
     if model is None:
         model = config_obj.get("llm.models.default", "google/gemini-2.5-flash")
-
-    # Load category config (both list and definitions)
-    config_categories, config_definitions = load_category_config()
-
-    # Use provided categories, or config categories, or default categories
-    if categories is None:
-        categories = config_categories if config_categories else DEFAULT_CATEGORIES
-
-    # Use provided definitions, or config definitions
-    if category_definitions is None:
-        category_definitions = config_definitions
 
     if api_key is None:
         api_key = os.getenv("OPENROUTER_API_KEY")
@@ -746,13 +599,6 @@ def classify_jobs_mega_batch(
 
     max_chars_mega = config_obj.get("processing.limits.job_text_mega_batch", 25000)
 
-    # Truncation tracking
-    truncation_stats: TruncationStats = {
-        "jobs_truncated": 0,
-        "total_jobs": len(jobs),
-        "truncated_jobs": [],  # List of {index, title, original_len, truncated_len, loss}
-    }
-
     # Build mega-batch prompt with ALL jobs using ID-based markdown format
     jobs_text = ""
 
@@ -762,51 +608,18 @@ def classify_jobs_mega_batch(
         text = job.get("text", "")
         original_len = len(text)
 
-        # Track truncation
+        # Fail on truncation - no silent errors!
         if original_len > max_chars_mega:
-            loss = original_len - max_chars_mega
-
-            # Record truncation
-            truncation_stats["jobs_truncated"] += 1
-            truncation_stats["truncated_jobs"].append(
-                {
-                    "index": idx,
-                    "job_id": job_id,
-                    "title": title,
-                    "original_length": original_len,
-                    "truncated_length": max_chars_mega,
-                    "loss": loss,
-                }
-            )
-
-            # LOG WARNING
-            logger.warning(
-                f"🚨 TRUNCATION: Job {idx} '{title}' "
-                f"truncated from {original_len:,} to {max_chars_mega:,} chars "
-                f"(LOSS: {loss:,} chars) - classification may be unreliable!"
-            )
-
-        jobs_text += f"\n[{job_id}] {title}\n{text[:max_chars_mega]}\n"
-
-    # DISPLAY TRUNCATION SUMMARY (if any)
-    if truncation_stats["jobs_truncated"] > 0:
-        logger.error("=" * 70)
-        logger.error("⚠️  TRUNCATION WARNING ⚠️")
-        logger.error(f"{truncation_stats['jobs_truncated']}/{len(jobs)} jobs had text truncated!")
-        logger.error("These classifications may be UNRELIABLE due to incomplete data.")
-        logger.error("=" * 70)
-
-        for trunc_info in truncation_stats["truncated_jobs"][:5]:  # Show first 5
+            ref_nr = job.get("refnr", "N/A")
             logger.error(
-                f"  - '{trunc_info['title']}': "
-                f"{trunc_info['original_length']:,} → {trunc_info['truncated_length']:,} chars "
-                f"(loss: {trunc_info['loss']:,})"
+                f"❌ Job {idx} '{title}' would be truncated: "
+                f"{original_len:,} → {max_chars_mega:,} chars"
+            )
+            raise TruncationError(
+                job_id=str(ref_nr), original_length=original_len, truncated_length=max_chars_mega
             )
 
-        if truncation_stats["jobs_truncated"] > 5:
-            logger.error(f"  ... and {truncation_stats['jobs_truncated'] - 5} more")
-
-        logger.error("=" * 70)
+        jobs_text += f"\n[{job_id}] {title}\n{text}\n"
 
     prompt = f"""Classify these {len(jobs)} German job descriptions into categories.
 
@@ -890,9 +703,6 @@ Return ONLY the lines with job IDs and categories, nothing else.
                 missing_indices=missing_jobs,
             )
 
-        # Create truncation lookup
-        truncation_lookup = {t["job_id"]: t for t in truncation_stats["truncated_jobs"]}
-
         # Assign results to jobs
         classified_jobs = []
         for idx, job in enumerate(jobs):
@@ -904,18 +714,6 @@ Return ONLY the lines with job IDs and categories, nothing else.
                     f"missing_jobs check! This should never happen."
                 )
             job_copy["categories"] = batch_results[idx]
-
-            # Add truncation metadata (standardized naming)
-            job_id = f"JOB_{idx:03d}"
-            if job_id in truncation_lookup:
-                t = truncation_lookup[job_id]
-                job_copy["_truncated"] = True
-                job_copy["_original_text_length"] = t["original_length"]
-                job_copy["_truncation_loss"] = t["loss"]
-                job_copy["_warning"] = "TRUNCATED"
-            else:
-                job_copy["was_truncated"] = False
-
             classified_jobs.append(job_copy)
 
         # Print usage stats from full response
@@ -929,13 +727,6 @@ Return ONLY the lines with job IDs and categories, nothing else.
             f"  ✓ Token usage: {prompt_tokens:,} prompt + {tokens:,} completion = {total_tokens:,} total"
         )
         logger.info("  [i] View actual costs at: https://openrouter.ai/activity")
-
-        # Save truncation stats to session
-        if session and truncation_stats["jobs_truncated"] > 0:
-            truncation_file = session.debug_dir / "truncation_report.json"
-            with open(truncation_file, "w", encoding="utf-8") as f:
-                json.dump(truncation_stats, f, ensure_ascii=False, indent=2)
-            logger.info(f"Truncation report saved to {truncation_file}")
 
         return classified_jobs
 

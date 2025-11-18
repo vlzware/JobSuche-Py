@@ -26,11 +26,7 @@ from src.llm import LLMProcessor
 from src.logging_config import get_module_logger
 from src.preferences import UserProfile
 from src.session import SearchSession
-from src.workflows import (
-    BrainstormWorkflow,
-    MatchingWorkflow,
-    MultiCategoryWorkflow,
-)
+from src.workflows import MatchingWorkflow
 
 logger = get_module_logger("main")
 
@@ -165,47 +161,38 @@ Configuration:
     - config/llm_config.yaml     → --model
     - config/api_config.yaml     → --delay
 
-  User preferences (categories.yaml, prompts.yaml) override config defaults.
+  User preferences (prompts.yaml) can override CV matching prompts.
   Command-line arguments override everything.
 
 Examples:
-  # Basic search
-  python main.py --was "Softwareentwickler" --wo "Berlin"
+  # Match using CV only
+  python main.py --was "Developer" --wo "Hamburg" --cv cv.md
+
+  # Match using perfect job description only
+  python main.py --was "Backend Dev" --wo "Berlin" \\
+      --perfect-job-description perfect_job_description.txt
+
+  # Match using BOTH CV and perfect job description (recommended!)
+  python main.py --was "Python Developer" --wo "München" \\
+      --cv cv.md --perfect-job-description perfect_job_description.txt
 
   # Extended search with custom parameters
   python main.py --was "Softwareentwickler" --wo "Berlin" \\
-      --umkreis 50 --max-pages 2 --size 100
+      --cv cv.md --umkreis 50 --max-pages 2 --size 100
 
-  # Use custom categories
-  python main.py --was "DevOps" --wo "München" \\
-      --categories "Docker" "Kubernetes" "CI/CD" "Cloud" "Andere"
+  # Return ALL jobs including poor matches (default: only good & excellent)
+  python main.py --was "Developer" --wo "Berlin" --cv cv.md --return-all
 
   # Re-classify existing jobs using session directory
-  python main.py --classify-only --input data/searches/20231020_142830
+  python main.py --classify-only --input data/searches/20231020_142830 --cv cv_updated.md
 
   # Or specify a JSON file directly
-  python main.py --classify-only --input data/searches/20231020_142830/debug/02_scraped_jobs.json
+  python main.py --classify-only --input data/searches/20231020_142830/debug/02_scraped_jobs.json \\
+      --cv cv.md --perfect-job-description perfect.txt
 
   # Re-classify ALL jobs from database with updated CV/criteria
-  python main.py --from-database --workflow matching --cv cv_updated.md
-  python main.py --from-database --categories "React" "Vue" "Angular" "Other"
-
-  # Matching workflow (personalized job search)
-  # Match using CV only
-  python main.py --workflow matching --was "Developer" --wo "Hamburg" --cv cv.md
-
-  # Match using perfect job description only
-  python main.py --workflow matching --was "Backend Dev" --wo "Berlin" \\
-      --perfect-job-description perfect_job_description.txt
-
-  # Match using BOTH (recommended for best results)
-  python main.py --workflow matching --was "Python Developer" --wo "München" \\
-      --cv cv.md --perfect-job-description perfect_job_description.txt
-
-  # Brainstorm job titles (discover "Berufsbezeichnungen")
-  python main.py --workflow brainstorm --cv cv.md
-  python main.py --workflow brainstorm --cv cv.md --motivation-description motivation.txt
-  python main.py --workflow brainstorm --motivation-description motivation.txt
+  python main.py --from-database --cv cv_updated.md
+  python main.py --from-database --cv cv.md --perfect-job-description new_dream.txt
         """,
     )
 
@@ -216,14 +203,7 @@ Examples:
     default_model = config.get("llm.models.default", "google/gemini-2.5-flash")
     default_delay = config.get("api.delays.scraping", 1.0)
 
-    # Workflow selection
-    parser.add_argument(
-        "--workflow",
-        type=str,
-        choices=["multi-category", "matching", "brainstorm"],
-        default="multi-category",
-        help="Analysis workflow (default: multi-category)",
-    )
+    # Workflow is now always "matching" - parameter removed for simplicity
 
     # Search parameters
     parser.add_argument(
@@ -268,13 +248,6 @@ Examples:
 
     # Classification parameters
     parser.add_argument(
-        "--categories",
-        type=str,
-        nargs="+",
-        default=None,
-        help="Categories for classification (uses categories.yaml if exists, otherwise defaults)",
-    )
-    parser.add_argument(
         "--model",
         type=str,
         default=default_model,
@@ -297,26 +270,21 @@ Examples:
         help="Reasoning effort for models that support it (e.g., Gemini Pro)",
     )
 
-    # Workflow-specific options
+    # Matching workflow options
     parser.add_argument(
         "--cv",
         type=str,
-        help="Path to your CV file (for matching workflow; optional for brainstorm)",
+        help="Path to your CV file for matching (optional, but at least one of --cv or --perfect-job-description required)",
     )
     parser.add_argument(
         "--perfect-job-description",
         type=str,
-        help="Description of your perfect job - can be a file path (.txt/.md) or direct text (for matching workflow)",
-    )
-    parser.add_argument(
-        "--motivation-description",
-        type=str,
-        help="Description of what motivates you in your career - can be a file path (.txt/.md) or direct text (optional for brainstorm workflow)",
+        help="Description of your perfect job - can be a file path (.txt/.md) or direct text (optional, but at least one of --cv or --perfect-job-description required)",
     )
     parser.add_argument(
         "--return-all",
         action="store_true",
-        help="Return all jobs including non-matches (matching workflow only)",
+        help="Return all jobs including poor matches (default: only return excellent and good matches)",
     )
 
     # Output options
@@ -437,16 +405,14 @@ Examples:
             sys.exit(1)
 
     if not args.classify_only and not args.from_database:
-        # Normal mode requires search parameters (except for brainstorm workflow)
-        if args.workflow != "brainstorm" and not args.was:
-            logger.error(
-                "--was is required (unless using --classify-only, --from-database, or --workflow brainstorm)"
-            )
+        # Normal mode requires search parameters
+        if not args.was:
+            logger.error("--was is required (unless using --classify-only or --from-database)")
             logger.error("Run 'python main.py --help' for usage information")
             sys.exit(1)
 
         # Warn if wo is not provided
-        if args.workflow != "brainstorm" and not args.wo:
+        if not args.wo:
             logger.warning("")
             logger.warning("=" * 80)
             logger.warning("⚠️  NO LOCATION SPECIFIED - SEARCHING ALL OF GERMANY")
@@ -459,40 +425,21 @@ Examples:
             args.perfect_job_description
         )
 
-    # Load motivation description from file if it's a file path
-    if args.motivation_description:
-        args.motivation_description = load_description_from_file_or_string(
-            args.motivation_description
-        )
+    # Validate matching workflow requirements
+    # Matching workflow requires at least one of CV or perfect job description
+    if not args.cv and not args.perfect_job_description:
+        logger.error("Matching workflow requires at least one of:")
+        logger.error("  --cv /path/to/cv.md")
+        logger.error("  --perfect-job-description 'Description of ideal role...'")
+        logger.error("Note: You can provide both for best results!")
+        sys.exit(1)
 
-    # Validate workflow-specific requirements
-    if args.workflow == "matching":
-        # Matching workflow requires at least one of CV or perfect job description
-        if not args.cv and not args.perfect_job_description:
-            logger.error("--workflow matching requires at least one of:")
-            logger.error("  --cv /path/to/cv.md")
-            logger.error("  --perfect-job-description 'Description of ideal role...'")
-            logger.error("Note: You can provide both for best results!")
+    # Validate CV file exists if provided
+    if args.cv:
+        cv_path = Path(args.cv)
+        if not cv_path.exists():
+            logger.error(f"CV file not found: {args.cv}")
             sys.exit(1)
-        # Validate CV file exists if provided
-        if args.cv:
-            cv_path = Path(args.cv)
-            if not cv_path.exists():
-                logger.error(f"CV file not found: {args.cv}")
-                sys.exit(1)
-    elif args.workflow == "brainstorm":
-        # Brainstorm requires at least one of CV or motivation
-        if not args.cv and not args.motivation_description:
-            logger.error("--workflow brainstorm requires at least one of:")
-            logger.error("  --cv /path/to/cv.md")
-            logger.error("  --motivation-description 'description...' or /path/to/motivation.txt")
-            sys.exit(1)
-        # Validate CV file exists if provided
-        if args.cv:
-            cv_path = Path(args.cv)
-            if not cv_path.exists():
-                logger.error(f"CV file not found: {args.cv}")
-                sys.exit(1)
 
     # Validate API key if classification is enabled
     if not args.no_classification:
@@ -508,125 +455,42 @@ Examples:
 
     verbose = not args.quiet
 
-    # Create search session
-    session = SearchSession(
-        verbose=verbose, workflow=args.workflow, classify_only=args.classify_only
-    )
+    # Create search session (workflow is always "matching" now)
+    session = SearchSession(verbose=verbose, workflow="matching", classify_only=args.classify_only)
 
     if session:
         logger.info(f"Session directory: {session.session_dir}")
         logger.info("All artifacts will be saved automatically")
 
-    # BRAINSTORM WORKFLOW: Special case - doesn't need job data
-    if args.workflow == "brainstorm":
-        # Brainstorm workflow runs independently - doesn't fetch/classify jobs
-
-        # Load CV if provided
-        cv_content = None
-        if args.cv:
-            cv_path = Path(args.cv)
-            try:
-                with open(cv_path, encoding="utf-8") as f:
-                    cv_content = f.read()
-                logger.info(f"CV: {args.cv}")
-                logger.info(f"CV length: {len(cv_content)} characters")
-            except Exception as e:
-                logger.error(f"Could not read CV file {args.cv}: {e}")
-                sys.exit(1)
-
-        # Motivation is already loaded from file if needed (see load_description_from_file_or_string above)
-        motivation_content = args.motivation_description
-        if motivation_content:
-            logger.info(f"Motivation length: {len(motivation_content)} characters")
-
-        # Validate API key for LLM
-        if not api_key:
-            logger.error("OpenRouter API key required for brainstorming")
-            logger.error("Either set OPENROUTER_API_KEY environment variable or use --api-key")
-            logger.error("Get your key at: https://openrouter.ai/keys")
+    # Load CV content if provided
+    cv_content = None
+    if args.cv:
+        cv_path = Path(args.cv)
+        try:
+            with open(cv_path, encoding="utf-8") as f:
+                cv_content = f.read()
+            logger.info(f"CV: {args.cv}")
+            logger.info(f"CV length: {len(cv_content)} characters")
+        except Exception as e:
+            logger.error(f"Could not read CV file {args.cv}: {e}")
             sys.exit(1)
 
-        # Run brainstorm workflow
-        try:
-            brainstorm_workflow = BrainstormWorkflow(
-                api_key=api_key,
-                model=args.model,
-                session=session,
-                verbose=verbose,
-            )
-
-            suggestions = brainstorm_workflow.run(
-                cv_content=cv_content,
-                motivation_description=motivation_content,
-            )
-
-            # Format the output
-            output = brainstorm_workflow.format_output(suggestions)
-
-            # Save to file
-            if session:
-                output_path = session.session_dir / "brainstorm_suggestions.md"
-            else:
-                output_path = Path("brainstorm_suggestions.md")
-
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(output)
-
-            # Print concise summary instead of full output
-            print("\n" + "=" * 80)
-            print("BRAINSTORMING COMPLETE")
-            print("=" * 80)
-            print(f"\n✓ Received answer ({len(suggestions)} characters)")
-            print(f"✓ Saved to: {output_path}")
-            print("\nOpen the file to view the suggestions and usage examples.")
-            print("=" * 80)
-
-            sys.exit(0)
-
-        except (
-            WorkflowConfigurationError,
-            OpenRouterAPIError,
-        ) as e:
-            handle_classification_error(e)
-
-    # Create user profile based on workflow
-    if args.workflow == "multi-category":
-        user_profile = UserProfile(categories=args.categories)
-        logger.info(
-            f"Categories ({user_profile.get_category_source()}): {', '.join(user_profile.get_categories())}"
-        )
-    elif args.workflow == "matching":
-        # Matching workflow: load CV if provided, perfect job description is passed separately
-        user_profile = UserProfile()
-
-        # Load CV content if provided
-        cv_content = None
-        if args.cv:
-            cv_path = Path(args.cv)
-            try:
-                with open(cv_path, encoding="utf-8") as f:
-                    cv_content = f.read()
-                logger.info(f"CV: {args.cv}")
-                logger.info(f"CV length: {len(cv_content)} characters")
-            except Exception as e:
-                logger.error(f"Could not read CV file {args.cv}: {e}")
-                sys.exit(1)
-
-        # Display what's being used for matching
-        if cv_content and args.perfect_job_description:
+    # Display what's being used for matching
+    if cv_content and args.perfect_job_description:
+        logger.info("Matching workflow: Using BOTH CV and perfect job description (recommended!)")
+    elif cv_content:
+        logger.info("Matching workflow: Using CV only")
+    elif args.perfect_job_description:
+        logger.info("Matching workflow: Using perfect job description only")
+        if args.perfect_job_description:
             logger.info(
-                "Matching workflow: Using BOTH CV and perfect job description (recommended!)"
+                f"Perfect job description length: {len(args.perfect_job_description)} characters"
             )
-        elif cv_content:
-            logger.info("Matching workflow: Using CV only")
-        elif args.perfect_job_description:
-            logger.info("Matching workflow: Using perfect job description only")
-            if args.perfect_job_description:
-                logger.info(
-                    f"Perfect job description length: {len(args.perfect_job_description)} characters"
-                )
 
-        logger.info(f"Return only matches: {not args.return_all}")
+    logger.info(f"Return only matches: {not args.return_all}")
+
+    # Create user profile (simplified for matching workflow)
+    user_profile = UserProfile()
 
     # FROM-DATABASE MODE: Load all jobs from database and classify with new criteria
     if args.from_database:
@@ -672,35 +536,22 @@ Examples:
             api_key=api_key, model=args.model, session=session, verbose=verbose
         )
 
-        # Create and run workflow based on type
+        # Create and run matching workflow
         try:
-            if args.workflow == "multi-category":
-                multi_workflow = MultiCategoryWorkflow(
-                    user_profile=user_profile,
-                    llm_processor=llm_processor,
-                    session=session,
-                    verbose=verbose,
-                )
-                classified_jobs = multi_workflow.run_from_file(
-                    jobs=jobs,
-                    resume=not args.no_resume,
-                    batch_size=args.batch_size,
-                )
-            elif args.workflow == "matching":
-                matching_workflow = MatchingWorkflow(
-                    user_profile=user_profile,
-                    llm_processor=llm_processor,
-                    session=session,
-                    verbose=verbose,
-                )
-                classified_jobs = matching_workflow.run_from_file(
-                    jobs=jobs,
-                    resume=not args.no_resume,
-                    cv_content=cv_content,
-                    perfect_job_description=args.perfect_job_description,
-                    return_only_matches=not args.return_all,
-                    batch_size=args.batch_size,
-                )
+            matching_workflow = MatchingWorkflow(
+                user_profile=user_profile,
+                llm_processor=llm_processor,
+                session=session,
+                verbose=verbose,
+            )
+            classified_jobs = matching_workflow.run_from_file(
+                jobs=jobs,
+                resume=not args.no_resume,
+                cv_content=cv_content,
+                perfect_job_description=args.perfect_job_description,
+                return_only_matches=not args.return_all,
+                batch_size=args.batch_size,
+            )
 
         except (
             LLMDataIntegrityError,
@@ -769,35 +620,22 @@ Examples:
             api_key=api_key, model=args.model, session=session, verbose=verbose
         )
 
-        # Create and run workflow based on type
+        # Create and run matching workflow
         try:
-            if args.workflow == "multi-category":
-                multi_workflow = MultiCategoryWorkflow(
-                    user_profile=user_profile,
-                    llm_processor=llm_processor,
-                    session=session,
-                    verbose=verbose,
-                )
-                classified_jobs = multi_workflow.run_from_file(
-                    jobs=jobs,
-                    resume=not args.no_resume,
-                    batch_size=args.batch_size,
-                )
-            elif args.workflow == "matching":
-                matching_workflow = MatchingWorkflow(
-                    user_profile=user_profile,
-                    llm_processor=llm_processor,
-                    session=session,
-                    verbose=verbose,
-                )
-                classified_jobs = matching_workflow.run_from_file(
-                    jobs=jobs,
-                    resume=not args.no_resume,
-                    cv_content=cv_content,
-                    perfect_job_description=args.perfect_job_description,
-                    return_only_matches=not args.return_all,
-                    batch_size=args.batch_size,
-                )
+            matching_workflow = MatchingWorkflow(
+                user_profile=user_profile,
+                llm_processor=llm_processor,
+                session=session,
+                verbose=verbose,
+            )
+            classified_jobs = matching_workflow.run_from_file(
+                jobs=jobs,
+                resume=not args.no_resume,
+                cv_content=cv_content,
+                perfect_job_description=args.perfect_job_description,
+                return_only_matches=not args.return_all,
+                batch_size=args.batch_size,
+            )
 
         except (
             LLMDataIntegrityError,
@@ -846,57 +684,32 @@ Examples:
             gatherer = JobGatherer(session=session, verbose=verbose)
 
             # Create and run workflow based on type
-            from src.workflows.base import BaseWorkflow
 
             try:
-                completed_workflow: BaseWorkflow
-                if args.workflow == "multi-category":
-                    multi_workflow = MultiCategoryWorkflow(
-                        user_profile=user_profile,
-                        llm_processor=llm_processor,
-                        job_gatherer=gatherer,
-                        session=session,
-                        verbose=verbose,
-                    )
-                    classified_jobs, failed_jobs = multi_workflow.run(
-                        was=args.was,
-                        wo=args.wo,
-                        umkreis=args.umkreis,
-                        size=args.size,
-                        max_pages=args.max_pages,
-                        arbeitszeit=args.arbeitszeit,
-                        enable_scraping=not args.no_scraping,
-                        show_statistics=True,
-                        batch_size=args.batch_size,
-                        veroeffentlichtseit=args.veroeffentlichtseit,
-                        include_weiterbildung=args.include_weiterbildung,
-                    )
-                    completed_workflow = multi_workflow  # For later reference to gathering_stats
-                elif args.workflow == "matching":
-                    matching_workflow = MatchingWorkflow(
-                        user_profile=user_profile,
-                        llm_processor=llm_processor,
-                        job_gatherer=gatherer,
-                        session=session,
-                        verbose=verbose,
-                    )
-                    classified_jobs, failed_jobs = matching_workflow.run(
-                        was=args.was,
-                        wo=args.wo,
-                        umkreis=args.umkreis,
-                        size=args.size,
-                        max_pages=args.max_pages,
-                        arbeitszeit=args.arbeitszeit,
-                        enable_scraping=not args.no_scraping,
-                        show_statistics=True,
-                        cv_content=cv_content,
-                        perfect_job_description=args.perfect_job_description,
-                        return_only_matches=not args.return_all,
-                        batch_size=args.batch_size,
-                        veroeffentlichtseit=args.veroeffentlichtseit,
-                        include_weiterbildung=args.include_weiterbildung,
-                    )
-                    completed_workflow = matching_workflow  # For later reference to gathering_stats
+                matching_workflow = MatchingWorkflow(
+                    user_profile=user_profile,
+                    llm_processor=llm_processor,
+                    job_gatherer=gatherer,
+                    session=session,
+                    verbose=verbose,
+                )
+                classified_jobs, failed_jobs = matching_workflow.run(
+                    was=args.was,
+                    wo=args.wo,
+                    umkreis=args.umkreis,
+                    size=args.size,
+                    max_pages=args.max_pages,
+                    arbeitszeit=args.arbeitszeit,
+                    enable_scraping=not args.no_scraping,
+                    show_statistics=True,
+                    cv_content=cv_content,
+                    perfect_job_description=args.perfect_job_description,
+                    return_only_matches=not args.return_all,
+                    batch_size=args.batch_size,
+                    veroeffentlichtseit=args.veroeffentlichtseit,
+                    include_weiterbildung=args.include_weiterbildung,
+                )
+                completed_workflow = matching_workflow  # For later reference to gathering_stats
 
                 # Get actual total from API (not just classified count)
                 total_jobs = completed_workflow.gathering_stats.get(
@@ -916,9 +729,6 @@ Examples:
     if classified_jobs and not args.no_classification:
         from src.analyzer import print_statistics_dashboard
 
-        # Count truncated jobs
-        truncated_count = sum(1 for job in classified_jobs if job.get("_truncated", False))
-
         # Count errors (from gathering_stats)
         if "completed_workflow" in locals() and hasattr(completed_workflow, "gathering_stats"):
             error_count = completed_workflow.gathering_stats.get("failed", 0)
@@ -929,15 +739,11 @@ Examples:
                 "total_found", len(classified_jobs)
             )
 
-            # For filtered workflows (matching without --return-all):
+            # For filtered matching workflow (without --return-all):
             # All scraped jobs are classified, but only matches are returned
-            # For multi-category: all scraped jobs are both classified and returned
-            if args.workflow == "matching" and not args.return_all:
-                # Filtered workflow: total_classified = all scraped jobs
-                total_classified = successful_fetches
-            else:
-                # No filtering: total_classified = returned count
-                total_classified = len(classified_jobs)
+            # Filtered workflow: total_classified = all scraped jobs
+            # No filtering: total_classified = returned count
+            total_classified = successful_fetches if not args.return_all else len(classified_jobs)
         else:
             # classify-only mode or no workflow
             # In classify-only mode, we have access to failed_jobs from extract_descriptions() above
@@ -945,10 +751,10 @@ Examples:
             successful_fetches = len(jobs)  # Jobs with successful extraction
             total_jobs_for_dashboard = total_jobs  # All jobs from the raw file
 
-            # In classify-only mode, check if filtering was requested
-            if args.classify_only and args.workflow == "matching" and not args.return_all:
-                # All jobs in input file were classified
-                total_classified = total_jobs  # total_jobs was set to len(jobs) earlier
+            # In classify-only or from-database mode, check if filtering was requested
+            if (args.classify_only or args.from_database) and not args.return_all:
+                # All jobs in input file/database were classified
+                total_classified = total_jobs  # total_jobs was set earlier
             else:
                 total_classified = len(classified_jobs)
 
@@ -957,7 +763,6 @@ Examples:
             classified_jobs=classified_jobs,
             total_jobs=total_jobs_for_dashboard,
             successful_fetches=successful_fetches,
-            truncation_count=truncated_count,
             error_count=error_count,
             total_classified=total_classified,
         )
@@ -1000,13 +805,13 @@ Examples:
 
         # Calculate total_classified for report (same logic as dashboard)
         if "completed_workflow" in locals() and hasattr(completed_workflow, "gathering_stats"):
-            if args.workflow == "matching" and not args.return_all:
+            if not args.return_all:
                 report_total_classified = completed_workflow.gathering_stats.get(
                     "successfully_extracted", len(classified_jobs)
                 )
             else:
                 report_total_classified = len(classified_jobs)
-        elif args.classify_only and args.workflow == "matching" and not args.return_all:
+        elif args.classify_only and not args.return_all:
             # For filtered workflows in classify-only mode: all successfully extracted jobs were classified
             report_total_classified = len(jobs)  # Use jobs (successfully extracted), not total_jobs
         else:
