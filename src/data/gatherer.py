@@ -260,10 +260,10 @@ class JobGatherer:
         # Step 3: Update database with scraped details
         if use_database:
             logger.info("Updating database with scraped details...")
-            for job in extracted_jobs:
+            for job in detailed_jobs:
                 refnr = job.get("refnr")
-                if refnr:
-                    details = job.get("details", {})
+                details = job.get("details", {})
+                if refnr and details:
                     self.database.update_details(refnr, details)
 
             # Save updated database
