@@ -68,12 +68,15 @@ class BaseWorkflow(ABC):
     def run(
         self,
         was: str,
-        wo: str,
+        wo: str | None = None,
         umkreis: int | None = None,
         size: int | None = None,
         max_pages: int | None = None,
+        arbeitszeit: str = "",
         enable_scraping: bool = True,
         show_statistics: bool = True,
+        veroeffentlichtseit: int | None = None,
+        include_weiterbildung: bool = False,
         **kwargs,
     ) -> tuple[list[dict], list[dict]]:
         """
@@ -81,12 +84,15 @@ class BaseWorkflow(ABC):
 
         Args:
             was: Job title/description
-            wo: Location
+            wo: Location (optional - if omitted, searches all of Germany)
             umkreis: Search radius in km (defaults to config value)
             size: Results per page (defaults to config value)
             max_pages: Maximum pages to fetch (defaults to config value)
+            arbeitszeit: Work time filter (vz, tz, ho, snw, or empty for all)
             enable_scraping: Whether to scrape detailed descriptions
             show_statistics: Whether to print statistics
+            veroeffentlichtseit: Days since publication (0-100) for incremental updates
+            include_weiterbildung: Include training/education jobs
             **kwargs: Additional workflow-specific parameters
 
         Returns:
@@ -106,15 +112,18 @@ class BaseWorkflow(ABC):
             umkreis=umkreis,
             size=size,
             max_pages=max_pages,
+            arbeitszeit=arbeitszeit,
             enable_scraping=enable_scraping,
+            veroeffentlichtseit=veroeffentlichtseit,
+            include_weiterbildung=include_weiterbildung,
         )
+
+        # Store gathering stats early (even if no jobs to process)
+        self.gathering_stats = gathering_stats
+        self.failed_jobs = failed_jobs
 
         if not jobs:
             return [], failed_jobs
-
-        # Store gathering stats and failed jobs for report generation
-        self.gathering_stats = gathering_stats
-        self.failed_jobs = failed_jobs
 
         # Step 2: Process with LLM
         classified_jobs = self.process(jobs, **kwargs)

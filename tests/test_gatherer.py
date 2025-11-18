@@ -5,9 +5,24 @@ The gatherer module coordinates job searches, scraping, and data extraction.
 These tests verify the orchestration logic while mocking external dependencies.
 """
 
+from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
+
 from src.data.gatherer import JobGatherer
+
+
+@pytest.fixture(autouse=True)
+def clean_test_database():
+    """Clean up test database before each test"""
+    db_path = Path("data/database/jobs_global.json")
+    if db_path.exists():
+        db_path.unlink()
+    yield
+    # Cleanup after test too
+    if db_path.exists():
+        db_path.unlink()
 
 
 class TestJobGathererInitialization:
@@ -35,7 +50,7 @@ class TestGatherBasicWorkflow:
     @patch("src.data.gatherer.search_jobs")
     @patch("src.data.gatherer.fetch_detailed_listings")
     @patch("src.data.gatherer.extract_descriptions")
-    def test_gather_complete_workflow(self, mock_extract, mock_fetch, mock_search):
+    def test_gather_complete_workflow(self, mock_extract, mock_fetch, mock_search, tmp_path):
         """Should execute full workflow: search -> scrape -> extract"""
         # Arrange
         mock_search.return_value = [
@@ -54,7 +69,7 @@ class TestGatherBasicWorkflow:
             [],  # No failed jobs
         )
 
-        gatherer = JobGatherer()
+        gatherer = JobGatherer(database_path=tmp_path / "test_db.json")
 
         # Act
         jobs, _failed_jobs, stats = gatherer.gather(
@@ -74,11 +89,11 @@ class TestGatherBasicWorkflow:
         mock_extract.assert_called_once()
 
     @patch("src.data.gatherer.search_jobs")
-    def test_gather_returns_empty_when_no_jobs_found(self, mock_search):
+    def test_gather_returns_empty_when_no_jobs_found(self, mock_search, tmp_path):
         """Should return empty list and zero stats when no jobs found"""
         # Arrange
         mock_search.return_value = []
-        gatherer = JobGatherer()
+        gatherer = JobGatherer(database_path=tmp_path / "test_db.json")
 
         # Act
         jobs, _failed_jobs, stats = gatherer.gather(was="Nonexistent", wo="Nowhere")
@@ -90,11 +105,11 @@ class TestGatherBasicWorkflow:
         assert stats["successfully_extracted"] == 0
 
     @patch("src.data.gatherer.search_jobs")
-    def test_gather_skips_scraping_when_disabled(self, mock_search):
+    def test_gather_skips_scraping_when_disabled(self, mock_search, tmp_path):
         """Should skip scraping when enable_scraping=False"""
         # Arrange
         mock_search.return_value = [{"refnr": "123", "titel": "Dev Job"}]
-        gatherer = JobGatherer()
+        gatherer = JobGatherer(database_path=tmp_path / "test_db.json")
 
         # Act
         with patch("src.data.gatherer.fetch_detailed_listings") as mock_fetch:
@@ -113,7 +128,7 @@ class TestGatherBasicWorkflow:
     @patch("src.data.gatherer.fetch_detailed_listings")
     @patch("src.data.gatherer.extract_descriptions")
     def test_gather_uses_config_defaults_when_params_none(
-        self, mock_extract, mock_fetch, mock_search, test_config
+        self, mock_extract, mock_fetch, mock_search, test_config, tmp_path
     ):
         """Should use config defaults when optional parameters not provided"""
         # Arrange

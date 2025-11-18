@@ -19,12 +19,13 @@ if TYPE_CHECKING:
 
 def search_jobs(
     was: str,
-    wo: str,
+    wo: str | None = None,
     size: int | None = None,
     max_pages: int | None = None,
     umkreis: int | None = None,
     arbeitszeit: str = "",
     zeitarbeit: bool = False,
+    veroeffentlichtseit: int | None = None,
     exclude_weiterbildung: bool = True,
     session: Optional["SearchSession"] = None,
     http_client: HttpClient | None = None,
@@ -35,12 +36,13 @@ def search_jobs(
 
     Args:
         was: Job description/title (e.g., "Softwareentwickler")
-        wo: Location (e.g., "Bergisch Gladbach")
+        wo: Location (e.g., "Bergisch Gladbach"). Optional - if omitted, searches all of Germany.
         size: Number of results per page (max 100). Defaults to config value.
         max_pages: Maximum number of pages to fetch. Defaults to config value.
         umkreis: Radius in kilometers. Defaults to config value.
         arbeitszeit: Working time filter (vz=fulltime, tz=parttime, ho=homeoffice, snw=nightshift, or empty for all)
         zeitarbeit: Include temporary work agencies
+        veroeffentlichtseit: Days since publication (0-100). None = fetch all jobs.
         exclude_weiterbildung: Exclude jobs marked as Weiterbildung/Ausbildung (default: True)
         session: Optional SearchSession to save raw API responses for debugging
         http_client: HTTP client for making requests (optional)
@@ -82,13 +84,20 @@ def search_jobs(
             ("size", size),
             ("umkreis", umkreis),
             ("was", was),
-            ("wo", wo),
             ("zeitarbeit", zeitarbeit),
         ]
+
+        # Only add wo if specified (omitting it searches all of Germany)
+        if wo:
+            params.append(("wo", wo))
 
         # Only add arbeitszeit if specified
         if arbeitszeit:
             params.append(("arbeitszeit", arbeitszeit))
+
+        # Only add veroeffentlichtseit if specified
+        if veroeffentlichtseit is not None:
+            params.append(("veroeffentlichtseit", veroeffentlichtseit))
 
         try:
             response = http_client.get(
@@ -153,6 +162,7 @@ def search_jobs(
                     "max_pages": max_pages,
                     "arbeitszeit": arbeitszeit,
                     "zeitarbeit": zeitarbeit,
+                    "veroeffentlichtseit": veroeffentlichtseit,
                     "exclude_weiterbildung": exclude_weiterbildung,
                 },
                 "pages": raw_responses,
@@ -165,13 +175,13 @@ def search_jobs(
 
 def simplify_job_data(jobs: list[dict]) -> list[dict]:
     """
-    Extract only relevant fields from job data
+    Extract relevant fields from job data including date/timestamp fields
 
     Args:
         jobs: List of job listings from API
 
     Returns:
-        Simplified job data with titel, ort, arbeitgeber
+        Simplified job data with essential fields plus date tracking
     """
     simplified = []
 
@@ -187,6 +197,9 @@ def simplify_job_data(jobs: list[dict]) -> list[dict]:
                 "arbeitgeber": job.get("arbeitgeber", ""),
                 "refnr": job.get("refnr"),
                 "externeUrl": job.get("externeUrl"),
+                # Date/timestamp fields for incremental fetching
+                "modifikationsTimestamp": job.get("modifikationsTimestamp"),
+                "aktuelleVeroeffentlichungsdatum": job.get("aktuelleVeroeffentlichungsdatum"),
             }
         )
 

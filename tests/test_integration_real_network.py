@@ -266,7 +266,7 @@ class TestWorkflowsEndToEnd:
     Uses small batches (3-5 jobs) for speed and cost.
     """
 
-    def test_multi_category_workflow_complete(self):
+    def test_multi_category_workflow_complete(self, tmp_path):
         """Test complete multi-category workflow with real services"""
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
@@ -283,12 +283,14 @@ class TestWorkflowsEndToEnd:
         print("=" * 70)
 
         # Setup
-        session = SearchSession(verbose=False)
+        session = SearchSession(base_dir=str(tmp_path), verbose=False)
         user_profile = UserProfile(categories=["Python", "Java", "DevOps", "Andere"])
         llm_processor = LLMProcessor(
             api_key=api_key, model="google/gemini-2.5-flash-lite", session=session, verbose=False
         )
-        gatherer = JobGatherer(session=session, verbose=False)
+        gatherer = JobGatherer(
+            session=session, verbose=False, database_path=tmp_path / "test_db.json"
+        )
 
         workflow = MultiCategoryWorkflow(
             user_profile=user_profile,
@@ -329,7 +331,7 @@ class TestWorkflowsEndToEnd:
         print("✅ MULTI-CATEGORY WORKFLOW COMPLETE")
         print("=" * 70)
 
-    def test_perfect_job_workflow_complete(self):
+    def test_perfect_job_workflow_complete(self, tmp_path):
         """Test complete perfect-job workflow with real services"""
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
@@ -346,13 +348,15 @@ class TestWorkflowsEndToEnd:
         print("=" * 70)
 
         # Setup
-        session = SearchSession(verbose=False)
+        session = SearchSession(base_dir=str(tmp_path), verbose=False)
         user_profile = UserProfile()
 
         llm_processor = LLMProcessor(
             api_key=api_key, model="google/gemini-2.5-flash-lite", session=session, verbose=False
         )
-        gatherer = JobGatherer(session=session, verbose=False)
+        gatherer = JobGatherer(
+            session=session, verbose=False, database_path=tmp_path / "test_db.json"
+        )
 
         workflow = MatchingWorkflow(
             user_profile=user_profile,
@@ -439,13 +443,15 @@ class TestWorkflowsEndToEnd:
 """
         cv_file.write_text(cv_content)
 
-        session = SearchSession(verbose=False)
+        session = SearchSession(base_dir=str(tmp_path / "sessions"), verbose=False)
         user_profile = UserProfile(cv_path=str(cv_file))
 
         llm_processor = LLMProcessor(
             api_key=api_key, model="google/gemini-2.5-flash-lite", session=session, verbose=False
         )
-        gatherer = JobGatherer(session=session, verbose=False)
+        gatherer = JobGatherer(
+            session=session, verbose=False, database_path=tmp_path / "test_db.json"
+        )
 
         workflow = MatchingWorkflow(
             user_profile=user_profile,
@@ -502,6 +508,7 @@ class TestWorkflowsEndToEnd:
         if not api_key:
             pytest.skip("OPENROUTER_API_KEY not set")
 
+        from src.data import JobGatherer
         from src.llm import LLMProcessor
         from src.preferences import UserProfile
         from src.session import SearchSession
@@ -513,7 +520,7 @@ class TestWorkflowsEndToEnd:
 
         # First, create a session with some jobs
         print("\n[1/2] Creating initial session with jobs...")
-        session1 = SearchSession(verbose=False)
+        session1 = SearchSession(base_dir=str(tmp_path / "session1"), verbose=False)
 
         # Simulate scraped jobs
         test_jobs = [
@@ -541,14 +548,21 @@ class TestWorkflowsEndToEnd:
 
         # Now re-classify with different categories
         print("\n[2/2] Re-classifying with new categories...")
-        session2 = SearchSession(verbose=False)
+        session2 = SearchSession(base_dir=str(tmp_path / "session2"), verbose=False)
         user_profile = UserProfile(categories=["Backend", "Cloud", "Andere"])
         llm_processor = LLMProcessor(
             api_key=api_key, model="google/gemini-2.5-flash-lite", session=session2, verbose=False
         )
+        gatherer = JobGatherer(
+            session=session2, verbose=False, database_path=tmp_path / "test_db.json"
+        )
 
         workflow = MultiCategoryWorkflow(
-            user_profile=user_profile, llm_processor=llm_processor, session=session2, verbose=False
+            user_profile=user_profile,
+            llm_processor=llm_processor,
+            job_gatherer=gatherer,
+            session=session2,
+            verbose=False,
         )
 
         # Load and re-classify

@@ -13,6 +13,11 @@ defaults:
   # Search radius in kilometers
   radius_km: 25
 
+  # Days since publication for incremental updates (when database exists)
+  # This is used automatically when a database exists and --veroeffentlichtseit is not specified
+  # Set to 7 for weekly updates, 1 for daily, etc.
+  veroeffentlichtseit: 7
+
 filters:
   exclude_keywords:
     - "weiterbildung"

@@ -186,6 +186,10 @@ Examples:
   # Or specify a JSON file directly
   python main.py --classify-only --input data/searches/20231020_142830/debug/02_scraped_jobs.json
 
+  # Re-classify ALL jobs from database with updated CV/criteria
+  python main.py --from-database --workflow matching --cv cv_updated.md
+  python main.py --from-database --categories "React" "Vue" "Angular" "Other"
+
   # Matching workflow (personalized job search)
   # Match using CV only
   python main.py --workflow matching --was "Developer" --wo "Hamburg" --cv cv.md
@@ -226,7 +230,10 @@ Examples:
         "--was", type=str, required=False, help='Job title/description (e.g., "Softwareentwickler")'
     )
     parser.add_argument(
-        "--wo", type=str, required=False, help='Location (e.g., "Berlin" or "München")'
+        "--wo",
+        type=str,
+        required=False,
+        help='Location (e.g., "Berlin" or "München"). Optional - if omitted, searches all of Germany.',
     )
     parser.add_argument(
         "--umkreis",
@@ -251,6 +258,12 @@ Examples:
         type=str,
         default="",
         help="Filter by work time: vz (fulltime), tz (parttime), ho (homeoffice), combine with ; (default: all)",
+    )
+    parser.add_argument(
+        "--veroeffentlichtseit",
+        type=int,
+        default=None,
+        help="Days since publication (0-100). If database exists, defaults to 7 for incremental updates. Use without value for full refresh.",
     )
 
     # Classification parameters
@@ -352,6 +365,11 @@ Examples:
         help="Include Weiterbildung/Ausbildung jobs (excluded by default)",
     )
     parser.add_argument(
+        "--from-database",
+        action="store_true",
+        help="Classify all jobs from database with new criteria (updated CV, categories, or model)",
+    )
+    parser.add_argument(
         "--no-resume",
         action="store_true",
         help="Ignore checkpoint and start fresh classification (deletes partial progress)",
@@ -396,14 +414,44 @@ Examples:
         if args.no_classification:
             logger.error("--classify-only and --no-classification are mutually exclusive")
             sys.exit(1)
-    else:
+
+    # Validate from-database mode
+    if args.from_database:
+        if args.input:
+            logger.error("--from-database and --input are mutually exclusive")
+            logger.error("--from-database loads ALL jobs from the database automatically")
+            sys.exit(1)
+
+        if args.classify_only:
+            logger.error("--from-database and --classify-only are mutually exclusive")
+            logger.error("Use --from-database alone (it implies classification)")
+            sys.exit(1)
+
+        if args.no_classification:
+            logger.error("--from-database requires classification (can't use --no-classification)")
+            sys.exit(1)
+
+        if args.was or args.wo:
+            logger.error("--from-database doesn't need --was or --wo")
+            logger.error("It uses ALL jobs already in the database")
+            sys.exit(1)
+
+    if not args.classify_only and not args.from_database:
         # Normal mode requires search parameters (except for brainstorm workflow)
-        if args.workflow != "brainstorm" and (not args.was or not args.wo):
+        if args.workflow != "brainstorm" and not args.was:
             logger.error(
-                "--was and --wo are required (unless using --classify-only or --workflow brainstorm)"
+                "--was is required (unless using --classify-only, --from-database, or --workflow brainstorm)"
             )
             logger.error("Run 'python main.py --help' for usage information")
             sys.exit(1)
+
+        # Warn if wo is not provided
+        if args.workflow != "brainstorm" and not args.wo:
+            logger.warning("")
+            logger.warning("=" * 80)
+            logger.warning("⚠️  NO LOCATION SPECIFIED - SEARCHING ALL OF GERMANY")
+            logger.warning("=" * 80)
+            logger.warning("")
 
     # Load perfect job description from file if it's a file path
     if args.perfect_job_description:
@@ -580,8 +628,94 @@ Examples:
 
         logger.info(f"Return only matches: {not args.return_all}")
 
+    # FROM-DATABASE MODE: Load all jobs from database and classify with new criteria
+    if args.from_database:
+        from src.data.job_database import JobDatabase
+
+        # Load database
+        database = JobDatabase()
+        if not database.exists():
+            logger.error(f"Database not found at {database.database_path}")
+            logger.error("Have you run a search yet? Database is created after first run.")
+            logger.error("")
+            logger.error("To create database, run a normal search first:")
+            logger.error('  python main.py --was "Python Developer" --wo "Berlin"')
+            sys.exit(1)
+
+        logger.info(f"Loading database from {database.database_path}")
+        database.load()
+
+        total_jobs = len(database.jobs)
+        logger.info(f"✓ Loaded {total_jobs} jobs from database")
+
+        if total_jobs == 0:
+            logger.warning("Database is empty - no jobs to classify")
+            sys.exit(0)
+
+        # Get all jobs (these have the full structure including 'details' dict)
+        raw_jobs = database.get_all_jobs()
+
+        # Extract and flatten job data (arbeitsort.ort -> ort, details.url -> url, etc.)
+        # This also filters out failed scrapes (JS_REQUIRED, SHORT_CONTENT, etc.)
+        from src.scraper import extract_descriptions
+
+        jobs, failed_jobs = extract_descriptions(raw_jobs)
+
+        logger.info(f"✓ Extracted {len(jobs)} valid job descriptions from database")
+        if failed_jobs:
+            logger.warning(
+                f"✗ Skipping {len(failed_jobs)} jobs with incomplete/failed scraping data"
+            )
+
+        # Create LLM processor and workflow
+        llm_processor = LLMProcessor(
+            api_key=api_key, model=args.model, session=session, verbose=verbose
+        )
+
+        # Create and run workflow based on type
+        try:
+            if args.workflow == "multi-category":
+                multi_workflow = MultiCategoryWorkflow(
+                    user_profile=user_profile,
+                    llm_processor=llm_processor,
+                    session=session,
+                    verbose=verbose,
+                )
+                classified_jobs = multi_workflow.run_from_file(
+                    jobs=jobs,
+                    resume=not args.no_resume,
+                    batch_size=args.batch_size,
+                )
+            elif args.workflow == "matching":
+                matching_workflow = MatchingWorkflow(
+                    user_profile=user_profile,
+                    llm_processor=llm_processor,
+                    session=session,
+                    verbose=verbose,
+                )
+                classified_jobs = matching_workflow.run_from_file(
+                    jobs=jobs,
+                    resume=not args.no_resume,
+                    cv_content=cv_content,
+                    perfect_job_description=args.perfect_job_description,
+                    return_only_matches=not args.return_all,
+                    batch_size=args.batch_size,
+                )
+
+        except (
+            LLMDataIntegrityError,
+            LLMResponseError,
+            OpenRouterAPIError,
+            WorkflowConfigurationError,
+            EmptyJobContentError,
+        ) as e:
+            handle_classification_error(e)
+
+        # Set total_jobs for statistics display
+        total_jobs = len(raw_jobs)
+
     # CLASSIFY-ONLY MODE: Load jobs from JSON (or merge multiple sessions)
-    if args.classify_only:
+    elif args.classify_only:
         # Handle multiple inputs with SessionMerger
         if len(args.input) > 1:
             from src.session_merger import SessionMerger
@@ -634,12 +768,6 @@ Examples:
         llm_processor = LLMProcessor(
             api_key=api_key, model=args.model, session=session, verbose=verbose
         )
-
-        # Build extra API parameters
-        extra_api_params: dict[str, Any] = {}
-        if args.reasoning_effort:
-            extra_api_params["reasoning"] = {"effort": args.reasoning_effort}
-            extra_api_params["include_reasoning"] = True
 
         # Create and run workflow based on type
         try:
@@ -700,6 +828,7 @@ Examples:
                 include_weiterbildung=args.include_weiterbildung,
                 enable_scraping=not args.no_scraping,
                 scraping_delay=args.delay,
+                veroeffentlichtseit=args.veroeffentlichtseit,
             )
 
             classified_jobs = jobs
@@ -735,9 +864,12 @@ Examples:
                         umkreis=args.umkreis,
                         size=args.size,
                         max_pages=args.max_pages,
+                        arbeitszeit=args.arbeitszeit,
                         enable_scraping=not args.no_scraping,
                         show_statistics=True,
                         batch_size=args.batch_size,
+                        veroeffentlichtseit=args.veroeffentlichtseit,
+                        include_weiterbildung=args.include_weiterbildung,
                     )
                     completed_workflow = multi_workflow  # For later reference to gathering_stats
                 elif args.workflow == "matching":
@@ -754,12 +886,15 @@ Examples:
                         umkreis=args.umkreis,
                         size=args.size,
                         max_pages=args.max_pages,
+                        arbeitszeit=args.arbeitszeit,
                         enable_scraping=not args.no_scraping,
                         show_statistics=True,
                         cv_content=cv_content,
                         perfect_job_description=args.perfect_job_description,
                         return_only_matches=not args.return_all,
                         batch_size=args.batch_size,
+                        veroeffentlichtseit=args.veroeffentlichtseit,
+                        include_weiterbildung=args.include_weiterbildung,
                     )
                     completed_workflow = matching_workflow  # For later reference to gathering_stats
 

@@ -72,13 +72,29 @@ pytest -m integration
 
 ---
 
+## Arbeitsagentur API Resources
+
+**Official Documentation:**
+- **GitHub Repository:** https://github.com/bundesAPI/jobsuche-api
+- **API Documentation:** https://jobsuche.api.bund.dev/
+
+**Key API Parameters:**
+- `veroeffentlichtseit` (days since publication):
+  - **API Range:** 0-100 days
+  - **Web UI Limit:** 28 days (4 weeks) at https://www.arbeitsagentur.de/jobsuche/
+  - **Note:** The API supports a wider range than the web interface
+- `wo` (location): Optional - omitting searches all of Germany
+
+---
+
 ## Project Structure
 
 ```
 jobsuche-py/
 ├── src/
-│   ├── data/              # Data gathering
-│   │   └── gatherer.py
+│   ├── data/              # Data gathering and caching
+│   │   ├── gatherer.py       # Job data orchestration
+│   │   └── job_database.py   # Persistent job caching (NEW)
 │   ├── preferences/       # User profiles & categories
 │   │   └── user_profile.py
 │   ├── llm/               # LLM processing
@@ -117,6 +133,86 @@ For use with _Claude.md_:
 ---
 
 ## Key Features
+
+### Incremental Job Fetching
+
+**Architecture:** Persistent job caching to minimize redundant API calls and scraping.
+
+**Separation of Concerns:**
+- **Database** (`data/database/jobs_global.json`): Tracks Arbeitsagentur job data for incremental fetching
+- **Checkpoints** (`debug/classification_checkpoint.json`): Tracks classification progress within a session
+
+**1. JobDatabase Class** (`src/data/job_database.py`)
+- **Purpose:** Avoid re-fetching and re-scraping jobs from Arbeitsagentur
+- **Scope:** Global, persistent across all searches
+- **Storage:** JSON file at `data/database/jobs_global.json`, keyed by `refnr` (unique job ID)
+- **Schema:**
+  ```python
+  {
+    "metadata": {
+      "created": "2025-11-17T10:00:00",
+      "last_updated": "2025-11-17T14:00:00",
+      "total_jobs": 203,
+      "active_jobs": 203
+    },
+    "jobs": {
+      "refnr": {
+        "titel": "...",
+        "modifikationsTimestamp": "2025-11-16T15:20:00",  # Key for change detection
+        "aktuelleVeroeffentlichungsdatum": "2025-11-15",
+        "details": {...},  # Scraped content
+        "metadata": {
+          "first_seen": "...",
+          "last_seen": "..."
+        },
+        "found_in_searches": [...]  # Track which searches found this job
+      }
+    }
+  }
+  ```
+
+**2. Merge Algorithm** (`JobDatabase.merge()`)
+- **New job:** `refnr` not in database → Add to database, mark for processing
+- **Updated job:** `refnr` exists, `modifikationsTimestamp` differs → Update database, mark for re-classification
+- **Unchanged job:** `refnr` exists, `modifikationsTimestamp` identical → Update `last_seen`, skip processing
+- **Returns:** Tuple of `(new_jobs, updated_jobs, unchanged_jobs)` for delta processing
+
+**3. API Integration** (`api_client.py`)
+- **Parameter:** `veroeffentlichtseit` (0-100 days) filters jobs by publication date
+- **Date fields extracted:** `modifikationsTimestamp`, `aktuelleVeroeffentlichungsdatum`
+- **Incremental mode:** When database exists, defaults to `veroeffentlichtseit=7` from config
+
+**4. Workflow Integration** (`gatherer.py`)
+- **Database check:** Load existing database or create new
+- **Fetch strategy:**
+  - Database exists → Use `veroeffentlichtseit` filter
+  - No database → Full fetch (no filter)
+- **Delta processing:** Only scrape/classify `new_jobs + updated_jobs`
+- **Database update:** Save after scraping completes
+
+**5. Testing Considerations**
+- **Test isolation:** Use `@pytest.fixture(autouse=True)` with `clean_test_database` to remove `data/database/jobs_global.json` before/after each test
+- **Temp paths:** Pass `tmp_path / "test_db.json"` to `JobGatherer(database_path=...)` for isolated tests
+- **Coverage:** ~60% indirect coverage via `test_gatherer.py` (no dedicated unit tests yet)
+- **Mock requirements:** Tests mock `search_jobs()` - ensure mock returns jobs with `modifikationsTimestamp` field
+
+**6. Performance Impact**
+- **First run:** Full processing (e.g., 200 jobs × 1.5s = ~5 minutes)
+- **Incremental run:** Delta only (e.g., 5 new jobs × 1.5s = ~8 seconds)
+- **API savings:** ~95% reduction for daily updates
+- **LLM cost savings:** Only classify new/modified jobs
+
+**7. Edge Cases Handled**
+- Missing `modifikationsTimestamp` → Treat as new job
+- Database corruption → Log error, raise exception (no silent failures)
+- Empty API response → Keep existing database, return empty delta
+- Multiple searches → Same `refnr` tracked across searches via `found_in_searches`
+
+**8. Classification Recovery**
+- **Not handled by database** - Use session checkpoints instead
+- Classification failures: Re-run with `--classify-only --input <session_dir>`
+- Changed criteria (CV, categories): Re-classify old sessions with `--classify-only`
+- See "Re-Classification Scenarios" in README.md for details
 
 ### Session Merging
 

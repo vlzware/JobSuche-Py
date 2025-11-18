@@ -17,6 +17,7 @@ _example output with matching workflow (fictional data)_
 ## Features
 
 - **Gather data** — Query Arbeitsagentur API with flexible parameters
+- **Incremental fetching** — Automatic database caching to avoid redundant API calls, scraping, and classification
 - **AI Classification** — Automatically categorize jobs by skills/technologies or rate them by "good match for me"
 - **Batch processing** — Configurable batch size and mega-batch mode
 - **Cheap/free or smart/more expensive** — By choosing the right model
@@ -67,6 +68,12 @@ python main.py --was "Softwareentwickler" --wo "Berlin"
 ```
 
 That's it! Results are automatically saved to `data/searches/YYYYMMDD_HHMMSS/`
+
+**📖 See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for complete workflow examples:**
+- First run with large datasets (with recovery patterns)
+- Daily incremental updates
+- Re-classifying with updated CV/criteria
+- Database management and refresh scenarios
 
 ---
 
@@ -209,6 +216,41 @@ Settings are applied in this order (later overrides earlier):
 
 **Example:** `config/search_config.yaml` sets `max_pages: 5`, but `--max-pages 2` overrides it for that execution.
 
+### Incremental Fetching
+
+JobSuchePy automatically caches jobs in a persistent database (`data/database/jobs_global.json`) to avoid redundant API calls, scraping, and classification.
+
+**How it works:**
+- **First run:** Fetches all jobs, creates database
+- **Subsequent runs:** Fetches only jobs published in last 7 days (default), skips unchanged jobs
+- **Smart merging:** Detects new jobs, modified jobs (by `modifikationsTimestamp`), and unchanged jobs
+- **Only processes delta:** Scrapes and classifies only new/updated jobs
+
+**Usage:**
+```bash
+# First run - creates database with all jobs
+python main.py --was "Python Developer" --wo "Berlin"
+
+# Next run - fetches only recent jobs (last 7 days)
+python main.py --was "Python Developer" --wo "Berlin"
+# Output: "Database merge: 2 new, 1 updated, 185 unchanged"
+# Only processes 3 jobs instead of 188!
+
+# Custom time window (1-100 days)
+python main.py --was "..." --wo "..." --veroeffentlichtseit 1  # Last 24h
+python main.py --was "..." --wo "..." --veroeffentlichtseit 30 # Last month
+
+# Force full refresh - delete database and run again
+rm data/database/jobs_global.json
+python main.py --was "..." --wo "..."
+```
+
+**Configuration:** Edit `config/search_config.yaml`:
+```yaml
+defaults:
+  veroeffentlichtseit: 7  # Days for incremental updates (default: 7)
+```
+
 ### Categories
 
 JobSuchePy classifies jobs into categories. Three configuration options:
@@ -314,9 +356,65 @@ Check [OpenRouter](https://openrouter.ai/) for current pricing, models, ratings 
 
 ## Re-Classification
 
-When using `--classify-only` with a session directory, the tool uses `debug/02_scraped_jobs.json` (raw scraped data without existing classifications). This ensures clean re-classification with different models or categories. If this file doesn't exist (e.g., old session), you'll need to re-run the original search with scraping enabled.
+Re-classify existing data without re-fetching or re-scraping from Arbeitsagentur.
 
-The idea of re-classification is to try different models or categories on the same data — no point of re-scraping.
+### Common Scenarios
+
+**1. Classification Failed (LLM Error)**
+```bash
+# Resume from checkpoint automatically
+python main.py --classify-only --input data/searches/20231117_140000
+```
+
+**2. Changed Classification Criteria (Single Session)**
+```bash
+# Updated CV or categories - re-classify specific session(s)
+python main.py --classify-only --workflow matching \
+    --input data/searches/20231117_140000 \
+    --cv cv_updated.md --perfect-job-description new_dream.txt
+
+# Try different model
+python main.py --classify-only --input data/searches/20231117_140000 \
+    --model "google/gemini-2.5-pro"
+
+# Different categories (multi-category workflow)
+python main.py --classify-only --input data/searches/20231117_140000 \
+    --categories "React" "Vue" "Svelte" "Other"
+
+# Multiple sessions at once
+python main.py --classify-only --workflow matching \
+    --input data/searches/20231117_* \
+    --cv cv_updated.md
+```
+
+**2b. Re-Classify ENTIRE Database (All Jobs)**
+```bash
+# Re-classify ALL jobs in database with new criteria (one command!)
+python main.py --from-database --workflow matching \
+    --cv cv_updated.md --perfect-job-description new_dream.txt
+
+# Or with new categories (multi-category workflow)
+python main.py --from-database \
+    --categories "React" "Vue" "Angular" "Svelte" "Other"
+
+# Try different model
+python main.py --from-database --workflow matching \
+    --cv cv.md --model "google/gemini-2.5-pro"
+```
+
+**Why?** Database contains ALL jobs you've ever searched (potentially 1000s across multiple searches). `--from-database` loads them all for re-classification with updated CV/categories/model without re-fetching from Arbeitsagentur.
+
+**3. Fresh Start (Delete Cache)**
+```bash
+# Force re-fetch everything from Arbeitsagentur
+rm data/database/jobs_global.json
+python main.py --was "Python Developer" --wo "Berlin"
+```
+
+**Technical Details:**
+- Uses `debug/02_scraped_jobs.json` (raw scraped data without classifications)
+- Automatically resumes from checkpoint if classification was interrupted
+- Use `--no-resume` to discard checkpoint and start fresh
 
 **Convenience wrappers** are available for re-classification:
 - `./reclassify.sh [session_dir]` - Multi-category (defaults to latest session)
