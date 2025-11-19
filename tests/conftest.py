@@ -2,6 +2,8 @@
 Pytest configuration and fixtures for error scenario tests
 """
 
+import os
+
 import pytest
 
 
@@ -25,3 +27,25 @@ def sample_job():
         "text": "Job description text here",
         "details": {"url": "https://example.com/job/12345"},
     }
+
+
+@pytest.fixture
+def cli_test_env(tmp_path):
+    """
+    Environment variables for CLI subprocess tests.
+
+    Sets JOBSUCHE_SEARCHES_DIR and JOBSUCHE_DATABASE_PATH to temporary
+    directories to prevent pollution of the project's data directories.
+
+    Usage:
+        def test_something(cli_test_env):
+            result = subprocess.run(
+                ["python", "main.py", ...],
+                env=cli_test_env,
+                ...
+            )
+    """
+    env = os.environ.copy()
+    env["JOBSUCHE_SEARCHES_DIR"] = str(tmp_path / "test_searches")
+    env["JOBSUCHE_DATABASE_PATH"] = str(tmp_path / "test_database" / "jobs.json")
+    return env

@@ -44,7 +44,12 @@ class SearchSession:
             verbose: Whether to print logs to console (default: True)
         """
         if base_dir is None:
-            base_dir = config.get("paths.directories.searches", "data/searches")
+            # Check for environment variable override (useful for testing)
+            import os
+
+            base_dir = os.environ.get(
+                "JOBSUCHE_SEARCHES_DIR", config.get("paths.directories.searches", "data/searches")
+            )
 
         if timestamp is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -333,7 +338,7 @@ class SearchSession:
         if gathering_stats and gathering_stats.get("successfully_extracted") is not None:
             successfully_scraped = gathering_stats["successfully_extracted"]
             lines.append(
-                f"Successfully Scraped: {successfully_scraped} ({successfully_scraped/total_jobs*100:.1f}%)"
+                f"Successfully Scraped: {successfully_scraped} ({successfully_scraped / total_jobs * 100:.1f}%)"
             )
 
         if return_only_matches:
@@ -345,10 +350,12 @@ class SearchSession:
             )
             lines.append(f"Total Classified:     {total_classified}")
             lines.append(
-                f"Matches Returned:     {num_matches} ({num_matches/total_classified*100:.1f}%)"
+                f"Matches Returned:     {num_matches} ({num_matches / total_classified * 100:.1f}%)"
             )
         else:
-            lines.append(f"Successfully Matched: {num_matches} ({num_matches/total_jobs*100:.1f}%)")
+            lines.append(
+                f"Successfully Matched: {num_matches} ({num_matches / total_jobs * 100:.1f}%)"
+            )
 
         # Category breakdown
         if category_counts:

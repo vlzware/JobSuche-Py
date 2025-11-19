@@ -39,7 +39,12 @@ class JobDatabase:
             database_path: Path to database file. If None, uses default location.
         """
         if database_path is None:
-            database_path = Path("data/database/jobs.json")
+            # Check for environment variable override (useful for testing)
+            import os
+
+            database_path = Path(
+                os.environ.get("JOBSUCHE_DATABASE_PATH", "data/database/jobs.json")
+            )
 
         self.database_path = Path(database_path)
         self.jobs: dict[str, dict] = {}  # Keyed by refnr
@@ -289,9 +294,9 @@ class JobDatabase:
             )
 
             error_msg = (
-                f"\n{'='*80}\n"
+                f"\n{'=' * 80}\n"
                 f"ERROR: Geographic context mismatch\n"
-                f"{'='*80}\n"
+                f"{'=' * 80}\n"
                 f"Database location: {stored_location}\n"
                 f"Your search:       {new_location}\n"
                 f"\n"
@@ -303,7 +308,7 @@ class JobDatabase:
                 f"  2. Use different folder for different area\n"
                 f"\n"
                 f"Design: One database = one geographic context (see CLAUDE.md)\n"
-                f"{'='*80}\n"
+                f"{'=' * 80}\n"
             )
             return False, error_msg
 

@@ -5,7 +5,6 @@ These tests cover error conditions that are unlikely to occur during normal usag
 but could cause issues if they do. Happy-path testing happens through real-world usage.
 """
 
-import os
 from unittest.mock import Mock, patch
 
 import pytest
@@ -152,7 +151,7 @@ class TestConfigErrors:
 class TestCLIErrors:
     """Test CLI validation errors"""
 
-    def test_missing_cv_file_exits(self, tmp_path):
+    def test_missing_cv_file_exits(self, cli_test_env):
         """Test CLI exits when CV file doesn't exist"""
         import subprocess
         from pathlib import Path
@@ -165,13 +164,14 @@ class TestCLIErrors:
             capture_output=True,
             text=True,
             cwd=str(project_root),
+            env=cli_test_env,
         )
 
         # Should exit with error
         assert result.returncode != 0
         assert "not found" in result.stderr.lower() or "not found" in result.stdout.lower()
 
-    def test_missing_required_inputs_exits(self):
+    def test_missing_required_inputs_exits(self, cli_test_env):
         """Test CLI exits when neither CV nor perfect job description provided"""
         import subprocess
         from pathlib import Path
@@ -184,6 +184,7 @@ class TestCLIErrors:
             capture_output=True,
             text=True,
             cwd=str(project_root),
+            env=cli_test_env,
         )
 
         # Should exit with error about missing inputs
@@ -273,40 +274,34 @@ class TestDatabaseErrors:
                 include_weiterbildung=False,
             )
 
-    def test_from_database_missing_database_exits(self):
+    def test_from_database_missing_database_exits(self, cli_test_env):
         """Test --from-database exits when database doesn't exist"""
         import subprocess
         from pathlib import Path
 
         project_root = Path(__file__).parent.parent
 
-        # Run in temporary directory to ensure no database exists
-        import tempfile
+        # Need to set fake API key to get past API validation
+        cli_test_env["OPENROUTER_API_KEY"] = "fake-key-for-testing"
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Need to set fake API key to get past API validation
-            env = os.environ.copy()
-            env["OPENROUTER_API_KEY"] = "fake-key-for-testing"
-            env["PWD"] = tmpdir
+        result = subprocess.run(
+            ["python", "main.py", "--from-database", "--cv", "cv.md"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+            env=cli_test_env,
+        )
 
-            result = subprocess.run(
-                ["python", "main.py", "--from-database", "--cv", "cv.md"],
-                capture_output=True,
-                text=True,
-                cwd=str(project_root),
-                env=env,
-            )
-
-            # Should exit with error
-            assert result.returncode != 0
-            output = result.stderr + result.stdout
-            assert "not found" in output.lower() or "database" in output.lower()
+        # Should exit with error
+        assert result.returncode != 0
+        output = result.stderr + result.stdout
+        assert "not found" in output.lower() or "database" in output.lower()
 
 
 class TestParameterConflicts:
     """Test mutually exclusive parameter validation"""
 
-    def test_from_database_with_input_conflict(self):
+    def test_from_database_with_input_conflict(self, cli_test_env):
         """Test --from-database and --input are mutually exclusive"""
         import subprocess
         from pathlib import Path
@@ -326,6 +321,7 @@ class TestParameterConflicts:
             capture_output=True,
             text=True,
             cwd=str(project_root),
+            env=cli_test_env,
         )
 
         # Should exit with error
@@ -333,7 +329,7 @@ class TestParameterConflicts:
         output = result.stderr + result.stdout
         assert "mutually exclusive" in output.lower()
 
-    def test_from_database_with_classify_only_conflict(self):
+    def test_from_database_with_classify_only_conflict(self, cli_test_env):
         """Test --from-database and --classify-only are mutually exclusive"""
         import subprocess
         import tempfile
@@ -361,6 +357,7 @@ class TestParameterConflicts:
                 capture_output=True,
                 text=True,
                 cwd=str(project_root),
+                env=cli_test_env,
             )
 
             # Should exit with error
@@ -371,7 +368,7 @@ class TestParameterConflicts:
             # Clean up temp file
             Path(temp_path).unlink(missing_ok=True)
 
-    def test_from_database_with_no_classification_conflict(self):
+    def test_from_database_with_no_classification_conflict(self, cli_test_env):
         """Test --from-database requires classification"""
         import subprocess
         from pathlib import Path
@@ -383,6 +380,7 @@ class TestParameterConflicts:
             capture_output=True,
             text=True,
             cwd=str(project_root),
+            env=cli_test_env,
         )
 
         # Should exit with error
@@ -390,7 +388,7 @@ class TestParameterConflicts:
         output = result.stderr + result.stdout
         assert "requires classification" in output.lower() or "can't use" in output.lower()
 
-    def test_from_database_with_was_parameter_conflict(self):
+    def test_from_database_with_was_parameter_conflict(self, cli_test_env):
         """Test --from-database doesn't need --was parameter"""
         import subprocess
         from pathlib import Path
@@ -402,6 +400,7 @@ class TestParameterConflicts:
             capture_output=True,
             text=True,
             cwd=str(project_root),
+            env=cli_test_env,
         )
 
         # Should exit with error
