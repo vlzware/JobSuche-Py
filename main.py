@@ -848,4 +848,12 @@ Examples:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("⚠️  Operation cancelled by user (Ctrl-C)")
+        logger.info("=" * 80)
+        logger.info("")
+        sys.exit(1)
