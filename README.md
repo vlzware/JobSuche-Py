@@ -77,7 +77,15 @@ python main.py --was "Backend Developer" --wo "München" \\
 # Or use BOTH (recommended!)
 python main.py --was "Software Developer" --wo "Hamburg" \\
     --cv cv.md --perfect-job-description perfect_job.txt
+
+# Search all available (no location filter - includes Germany, Austria...)
+python main.py --was "Python Developer" --cv cv.md
 ```
+
+**Note on `--wo` (location) parameter:**
+- If omitted, searches **all available listings** (not limited to Germany)
+- May include jobs from Austria and potentially other countries
+- To limit to Germany only, use: `--wo "Deutschland (Land)"`
 
 That's it! Results are automatically saved to `data/searches/YYYYMMDD_HHMMSS/`
 
