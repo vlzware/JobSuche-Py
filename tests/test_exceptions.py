@@ -344,13 +344,10 @@ class TestWorkflowExceptionRaising:
 
     def test_matching_workflow_raises_configuration_error_without_inputs(self):
         """Test MatchingWorkflow raises WorkflowConfigurationError when neither CV nor perfect job provided"""
-        from src.preferences import UserProfile
         from src.workflows.matching import MatchingWorkflow
 
         # Create workflow without CV or perfect job description
-        profile = UserProfile()
         workflow = MatchingWorkflow(
-            user_profile=profile,
             llm_processor=None,  # type: ignore
             session=None,
             verbose=False,
@@ -364,13 +361,10 @@ class TestWorkflowExceptionRaising:
 
     def test_matching_workflow_raises_configuration_error_with_empty_inputs(self):
         """Test MatchingWorkflow raises WorkflowConfigurationError when inputs are empty strings"""
-        from src.preferences import UserProfile
         from src.workflows.matching import MatchingWorkflow
 
         # Create workflow with empty string inputs
-        profile = UserProfile()
         workflow = MatchingWorkflow(
-            user_profile=profile,
             llm_processor=None,  # type: ignore
             session=None,
             verbose=False,

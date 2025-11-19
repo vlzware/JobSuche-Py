@@ -197,7 +197,6 @@ python main.py --was "Python Developer" --wo "Berlin" --cv cv.md
 **When to use `--classify-only`:**
 - LLM error mid-classification
 - Want to change criteria (CV, perfect job description, model)
-- Merge multiple sessions
 
 **When to use `--from-database`:**
 - Re-classify ALL jobs ever searched
@@ -246,19 +245,6 @@ python main.py --was "Python Developer" --wo "Berlin" --cv cv.md
 # Re-classify with different model
 python main.py --classify-only --input data/searches/20231117_140000 \
     --cv cv.md --model "google/gemini-2.5-pro"
-```
-
-### Merge Multiple Searches
-```bash
-# Search for different job titles, then merge
-python main.py --was "Python Developer" --wo "Berlin" --cv cv.md
-python main.py --was "Backend Engineer" --wo "Berlin" --cv cv.md
-python main.py --was "Software Developer" --wo "Berlin" --cv cv.md
-
-# Merge all three sessions
-python main.py --classify-only \
-    --input data/searches/20231117_* \
-    --cv cv.md
 ```
 
 ### Updated CV Strategy

@@ -5,6 +5,7 @@ These tests cover error conditions that are unlikely to occur during normal usag
 but could cause issues if they do. Happy-path testing happens through real-world usage.
 """
 
+import os
 from unittest.mock import Mock, patch
 
 import pytest
@@ -90,15 +91,11 @@ class TestWorkflowErrors:
         """Test matching workflow validates required inputs"""
         from src.exceptions import WorkflowConfigurationError
         from src.llm import LLMProcessor
-        from src.preferences import UserProfile
         from src.workflows import MatchingWorkflow
 
-        user_profile = UserProfile()
         llm_processor = LLMProcessor(api_key="test")
 
-        workflow = MatchingWorkflow(
-            user_profile=user_profile, llm_processor=llm_processor, session=None, verbose=False
-        )
+        workflow = MatchingWorkflow(llm_processor=llm_processor, session=None, verbose=False)
 
         # Should raise error when neither CV nor perfect_job_description provided
         with pytest.raises(WorkflowConfigurationError):
@@ -108,15 +105,11 @@ class TestWorkflowErrors:
         """Test matching workflow rejects empty string inputs"""
         from src.exceptions import WorkflowConfigurationError
         from src.llm import LLMProcessor
-        from src.preferences import UserProfile
         from src.workflows import MatchingWorkflow
 
-        user_profile = UserProfile()
         llm_processor = LLMProcessor(api_key="test")
 
-        workflow = MatchingWorkflow(
-            user_profile=user_profile, llm_processor=llm_processor, session=None, verbose=False
-        )
+        workflow = MatchingWorkflow(llm_processor=llm_processor, session=None, verbose=False)
 
         # Empty strings should be treated as missing
         with pytest.raises(WorkflowConfigurationError):
@@ -125,18 +118,6 @@ class TestWorkflowErrors:
                 cv_content="   ",  # Whitespace only
                 perfect_job_description="",  # Empty
             )
-
-
-class TestFileHandlingErrors:
-    """Test file I/O error handling"""
-
-    def test_missing_cv_file(self, tmp_path):
-        """Test handling of missing CV file"""
-        from src.preferences import UserProfile
-
-        # Should handle missing file gracefully
-        profile = UserProfile(cv_path="/nonexistent/cv.md")
-        assert not profile.has_cv()
 
 
 class TestHTTPClientErrors:
@@ -207,3 +188,223 @@ class TestCLIErrors:
 
         # Should exit with error about missing inputs
         assert result.returncode != 0
+
+
+class TestDatabaseErrors:
+    """Test database-related error conditions"""
+
+    def test_geographic_context_mismatch(self, tmp_path):
+        """Test that changing search location raises error"""
+        from src.data import JobGatherer
+        from src.session import SearchSession
+
+        # Create temporary database
+        db_path = tmp_path / "test_jobs.json"
+
+        # First search - Berlin
+        session1 = SearchSession(base_dir=tmp_path / "session1", verbose=False)
+        gatherer1 = JobGatherer(session=session1, verbose=False, database_path=db_path)
+
+        # Mock the API/scraping to avoid real network calls
+        with (
+            patch("src.data.gatherer.search_jobs") as mock_search,
+            patch("src.data.gatherer.fetch_detailed_listings") as mock_scrape,
+        ):
+            # Mock API returns one job
+            mock_search.return_value = [
+                {
+                    "refnr": "test-123",
+                    "beruf": "Test Job",
+                    "arbeitgeber": "Test Company",
+                    "titel": "Test Title",
+                    "modifikationsTimestamp": "2024-01-01T00:00:00",
+                    "arbeitsort": {"ort": "Berlin"},
+                }
+            ]
+            # Mock scraping returns detailed jobs list
+            mock_scrape.return_value = [
+                {
+                    "refnr": "test-123",
+                    "beruf": "Test Job",
+                    "arbeitgeber": "Test Company",
+                    "titel": "Test Title",
+                    "modifikationsTimestamp": "2024-01-01T00:00:00",
+                    "arbeitsort": {"ort": "Berlin"},
+                    "details": {
+                        "success": True,
+                        "url": "https://example.com/job",
+                        "text": "Test job description",
+                    },
+                }
+            ]
+
+            # First search should succeed
+            gatherer1.gather(
+                was="Developer",
+                wo="Berlin",
+                umkreis=25,
+                size=10,
+                max_pages=1,
+                arbeitszeit="",
+                enable_scraping=True,
+                veroeffentlichtseit=None,
+                include_weiterbildung=False,
+            )
+
+        # Second search - Munich (different location)
+        session2 = SearchSession(base_dir=tmp_path / "session2", verbose=False)
+        gatherer2 = JobGatherer(session=session2, verbose=False, database_path=db_path)
+
+        # Should raise ValueError for geographic context mismatch
+        with (
+            pytest.raises(ValueError, match="Geographic context mismatch"),
+            patch("src.data.gatherer.search_jobs") as mock_search,
+        ):
+            mock_search.return_value = []
+            gatherer2.gather(
+                was="Developer",
+                wo="München",  # Different location!
+                umkreis=25,
+                size=10,
+                max_pages=1,
+                arbeitszeit="",
+                enable_scraping=True,
+                veroeffentlichtseit=None,
+                include_weiterbildung=False,
+            )
+
+    def test_from_database_missing_database_exits(self):
+        """Test --from-database exits when database doesn't exist"""
+        import subprocess
+        from pathlib import Path
+
+        project_root = Path(__file__).parent.parent
+
+        # Run in temporary directory to ensure no database exists
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Need to set fake API key to get past API validation
+            env = os.environ.copy()
+            env["OPENROUTER_API_KEY"] = "fake-key-for-testing"
+            env["PWD"] = tmpdir
+
+            result = subprocess.run(
+                ["python", "main.py", "--from-database", "--cv", "cv.md"],
+                capture_output=True,
+                text=True,
+                cwd=str(project_root),
+                env=env,
+            )
+
+            # Should exit with error
+            assert result.returncode != 0
+            output = result.stderr + result.stdout
+            assert "not found" in output.lower() or "database" in output.lower()
+
+
+class TestParameterConflicts:
+    """Test mutually exclusive parameter validation"""
+
+    def test_from_database_with_input_conflict(self):
+        """Test --from-database and --input are mutually exclusive"""
+        import subprocess
+        from pathlib import Path
+
+        project_root = Path(__file__).parent.parent
+
+        result = subprocess.run(
+            [
+                "python",
+                "main.py",
+                "--from-database",
+                "--input",
+                "some_session",
+                "--cv",
+                "cv.md",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+        )
+
+        # Should exit with error
+        assert result.returncode != 0
+        output = result.stderr + result.stdout
+        assert "mutually exclusive" in output.lower()
+
+    def test_from_database_with_classify_only_conflict(self):
+        """Test --from-database and --classify-only are mutually exclusive"""
+        import subprocess
+        import tempfile
+        from pathlib import Path
+
+        project_root = Path(__file__).parent.parent
+
+        # Create a temporary file to pass path validation
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("[]")
+            temp_path = f.name
+
+        try:
+            result = subprocess.run(
+                [
+                    "python",
+                    "main.py",
+                    "--from-database",
+                    "--classify-only",
+                    "--input",
+                    temp_path,
+                    "--cv",
+                    "cv.md",
+                ],
+                capture_output=True,
+                text=True,
+                cwd=str(project_root),
+            )
+
+            # Should exit with error
+            assert result.returncode != 0
+            output = result.stderr + result.stdout
+            assert "mutually exclusive" in output.lower()
+        finally:
+            # Clean up temp file
+            Path(temp_path).unlink(missing_ok=True)
+
+    def test_from_database_with_no_classification_conflict(self):
+        """Test --from-database requires classification"""
+        import subprocess
+        from pathlib import Path
+
+        project_root = Path(__file__).parent.parent
+
+        result = subprocess.run(
+            ["python", "main.py", "--from-database", "--no-classification", "--cv", "cv.md"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+        )
+
+        # Should exit with error
+        assert result.returncode != 0
+        output = result.stderr + result.stdout
+        assert "requires classification" in output.lower() or "can't use" in output.lower()
+
+    def test_from_database_with_was_parameter_conflict(self):
+        """Test --from-database doesn't need --was parameter"""
+        import subprocess
+        from pathlib import Path
+
+        project_root = Path(__file__).parent.parent
+
+        result = subprocess.run(
+            ["python", "main.py", "--from-database", "--was", "Developer", "--cv", "cv.md"],
+            capture_output=True,
+            text=True,
+            cwd=str(project_root),
+        )
+
+        # Should exit with error
+        assert result.returncode != 0
+        output = result.stderr + result.stdout
+        assert "doesn't need" in output.lower() or "all jobs" in output.lower()

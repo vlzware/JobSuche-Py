@@ -240,10 +240,6 @@ python main.py --classify-only --input data/searches/20231117_140000 \\
 # Try different model
 python main.py --classify-only --input data/searches/20231117_140000 \\
     --cv cv.md --model "google/gemini-2.5-pro"
-
-# Multiple sessions at once
-python main.py --classify-only --input data/searches/20231117_* \\
-    --cv cv_updated.md
 ```
 
 **3. Re-Classify ENTIRE Database (All Jobs)**
@@ -269,20 +265,6 @@ python main.py --was "Python Developer" --wo "Berlin" --cv cv.md
 - Automatically resumes from checkpoint if classification was interrupted
 - Use `--no-resume` to discard checkpoint and start fresh
 
-### Merging Multiple Sessions
-
-You can merge and re-classify multiple search sessions together (e.g., different job titles, same skills):
-
-```bash
-# Merge multiple sessions and classify together
-python main.py --classify-only \\
-    --input data/searches/20231020_142830 \\
-           data/searches/20231020_153045 \\
-           data/searches/20231020_164512 \\
-    --cv cv.md --perfect-job-description perfect_job.txt
-```
-
-The tool automatically deduplicates jobs by their reference number (refnr) before classification, ensuring each job is only processed once even if it appears in multiple search results.
 
 ### Auto-Resume After Errors
 

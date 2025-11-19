@@ -24,7 +24,6 @@ from src.exceptions import (
 )
 from src.llm import LLMProcessor
 from src.logging_config import get_module_logger
-from src.preferences import UserProfile
 from src.session import SearchSession
 from src.workflows import MatchingWorkflow
 
@@ -307,11 +306,8 @@ Examples:
     parser.add_argument(
         "--input",
         type=str,
-        nargs="+",
-        help="Input JSON file(s) or session directory/directories (use with --classify-only). "
-        "Can specify multiple paths to merge sessions. "
-        "If directory: uses debug/02_scraped_jobs.json (raw scraped data). "
-        "Multiple sessions are deduplicated by refnr before classification.",
+        help="Input JSON file or session directory (use with --classify-only). "
+        "If directory: uses debug/02_scraped_jobs.json (raw scraped data).",
     )
     parser.add_argument(
         "--no-scraping",
@@ -363,21 +359,14 @@ Examples:
     if args.classify_only:
         if not args.input:
             logger.error("--classify-only requires --input <file.json or session_directory>")
-            logger.error("Usage: python main.py --classify-only --input <path> [<path2> ...]")
+            logger.error("Usage: python main.py --classify-only --input <path>")
             sys.exit(1)
 
-        # Validate all input paths exist
-        for input_str in args.input:
-            input_path = Path(input_str)
-            if not input_path.exists():
-                logger.error(f"Input path not found: {input_str}")
-                sys.exit(1)
-
-        # If multiple inputs provided, log merge info
-        if len(args.input) > 1:
-            logger.info(f"Merging {len(args.input)} sessions/files:")
-            for input_str in args.input:
-                logger.info(f"  - {input_str}")
+        # Validate input path exists
+        input_path = Path(args.input)
+        if not input_path.exists():
+            logger.error(f"Input path not found: {args.input}")
+            sys.exit(1)
 
         if args.no_classification:
             logger.error("--classify-only and --no-classification are mutually exclusive")
@@ -489,9 +478,6 @@ Examples:
 
     logger.info(f"Return only matches: {not args.return_all}")
 
-    # Create user profile (simplified for matching workflow)
-    user_profile = UserProfile()
-
     # FROM-DATABASE MODE: Load all jobs from database and classify with new criteria
     if args.from_database:
         from src.data.job_database import JobDatabase
@@ -539,7 +525,6 @@ Examples:
         # Create and run matching workflow
         try:
             matching_workflow = MatchingWorkflow(
-                user_profile=user_profile,
                 llm_processor=llm_processor,
                 session=session,
                 verbose=verbose,
@@ -565,40 +550,26 @@ Examples:
         # Set total_jobs for statistics display
         total_jobs = len(raw_jobs)
 
-    # CLASSIFY-ONLY MODE: Load jobs from JSON (or merge multiple sessions)
+    # CLASSIFY-ONLY MODE: Load jobs from JSON file or session directory
     elif args.classify_only:
-        # Handle multiple inputs with SessionMerger
-        if len(args.input) > 1:
-            from src.session_merger import SessionMerger
+        input_path = Path(args.input)
 
-            merger = SessionMerger(verbose=verbose)
-            raw_jobs = merger.merge_sessions(args.input)
-
-            # Save merged data to new session for debugging and re-classification
-            session.save_scraped_jobs(raw_jobs)
-            logger.info(
-                f"✓ Merged data saved to session: {session.debug_dir / '02_scraped_jobs.json'}"
-            )
-        else:
-            # Single input - load directly
-            input_path = Path(args.input[0])
-
-            # If it's a directory, resolve to raw scraped data
-            if input_path.is_dir():
-                scraped_jobs_path = input_path / "debug" / "02_scraped_jobs.json"
-                if scraped_jobs_path.exists():
-                    input_file = scraped_jobs_path
-                    logger.info(f"Loading jobs from session: {input_path.name}")
-                else:
-                    logger.error(f"Raw scraped data not found in session: {input_path}")
-                    logger.error(f"Expected: {scraped_jobs_path}")
-                    sys.exit(1)
+        # If it's a directory, resolve to raw scraped data
+        if input_path.is_dir():
+            scraped_jobs_path = input_path / "debug" / "02_scraped_jobs.json"
+            if scraped_jobs_path.exists():
+                input_file = scraped_jobs_path
+                logger.info(f"Loading jobs from session: {input_path.name}")
             else:
-                input_file = input_path
-                logger.info(f"Loading jobs from file: {input_file}")
+                logger.error(f"Raw scraped data not found in session: {input_path}")
+                logger.error(f"Expected: {scraped_jobs_path}")
+                sys.exit(1)
+        else:
+            input_file = input_path
+            logger.info(f"Loading jobs from file: {input_file}")
 
-            with open(input_file, encoding="utf-8") as f:
-                raw_jobs = json.load(f)
+        with open(input_file, encoding="utf-8") as f:
+            raw_jobs = json.load(f)
 
         total_jobs = len(raw_jobs)
         logger.info(f"✓ Loaded {total_jobs} raw jobs")
@@ -623,7 +594,6 @@ Examples:
         # Create and run matching workflow
         try:
             matching_workflow = MatchingWorkflow(
-                user_profile=user_profile,
                 llm_processor=llm_processor,
                 session=session,
                 verbose=verbose,
@@ -687,7 +657,6 @@ Examples:
 
             try:
                 matching_workflow = MatchingWorkflow(
-                    user_profile=user_profile,
                     llm_processor=llm_processor,
                     job_gatherer=gatherer,
                     session=session,

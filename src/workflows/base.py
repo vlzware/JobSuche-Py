@@ -9,7 +9,6 @@ from ..analyzer import generate_report, print_statistics
 from ..config import config
 from ..data.gatherer import JobGatherer
 from ..llm.processor import LLMProcessor
-from ..preferences.user_profile import UserProfile
 
 if TYPE_CHECKING:
     from ..session import SearchSession
@@ -27,7 +26,6 @@ class BaseWorkflow(ABC):
 
     def __init__(
         self,
-        user_profile: UserProfile,
         llm_processor: LLMProcessor,
         job_gatherer: JobGatherer | None = None,
         session: Optional["SearchSession"] = None,
@@ -37,13 +35,11 @@ class BaseWorkflow(ABC):
         Initialize the workflow
 
         Args:
-            user_profile: User preferences and categories
             llm_processor: LLM processor for classification
             job_gatherer: Optional job gatherer (created if not provided)
             session: Optional SearchSession for saving artifacts
             verbose: Whether to print progress messages
         """
-        self.user_profile = user_profile
         self.llm_processor = llm_processor
         self.job_gatherer = job_gatherer or JobGatherer(session=session, verbose=verbose)
         self.session = session
