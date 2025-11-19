@@ -455,8 +455,8 @@ Examples:
 
     verbose = not args.quiet
 
-    # Create search session (workflow is always "matching" now)
-    session = SearchSession(verbose=verbose, workflow="matching", classify_only=args.classify_only)
+    # Create search session
+    session = SearchSession(verbose=verbose)
 
     if session:
         logger.info(f"Session directory: {session.session_dir}")
@@ -778,14 +778,11 @@ Examples:
         json_path = session.save_classified_jobs(classified_jobs)
         logger.info(f"✓ Classified jobs saved to {json_path}")
 
-        # Generate and save report
-        from src.analyzer import generate_report
-        from src.scraper import ExtractionStats, generate_extraction_statistics
-
+        # Prepare data for summary
         search_params = {
-            "was": args.was if not args.classify_only else "N/A",
-            "wo": args.wo if not args.classify_only else "N/A",
-            "umkreis": args.umkreis if not args.classify_only else "N/A",
+            "was": args.was if not args.classify_only else None,
+            "wo": args.wo if not args.classify_only else None,
+            "umkreis": args.umkreis if not args.classify_only else None,
         }
 
         # Get gathering stats from workflow if available
@@ -794,39 +791,6 @@ Examples:
             if "completed_workflow" in locals()
             else None
         )
-
-        # Load scraped jobs to generate extraction statistics
-        extraction_stats: ExtractionStats | None = None
-        scraped_jobs_path = session.debug_dir / "02_scraped_jobs.json"
-        if scraped_jobs_path.exists():
-            with open(scraped_jobs_path, encoding="utf-8") as f:
-                scraped_jobs = json.load(f)
-                extraction_stats = generate_extraction_statistics(scraped_jobs)
-
-        # Calculate total_classified for report (same logic as dashboard)
-        if "completed_workflow" in locals() and hasattr(completed_workflow, "gathering_stats"):
-            if not args.return_all:
-                report_total_classified = completed_workflow.gathering_stats.get(
-                    "successfully_extracted", len(classified_jobs)
-                )
-            else:
-                report_total_classified = len(classified_jobs)
-        elif args.classify_only and not args.return_all:
-            # For filtered workflows in classify-only mode: all successfully extracted jobs were classified
-            report_total_classified = len(jobs)  # Use jobs (successfully extracted), not total_jobs
-        else:
-            report_total_classified = len(classified_jobs)
-
-        report = generate_report(
-            classified_jobs=classified_jobs,
-            total_jobs=total_jobs,
-            search_params=search_params,
-            gathering_stats=report_gathering_stats,
-            extraction_stats=extraction_stats,
-            total_classified=report_total_classified,
-        )
-        report_path = session.save_analysis_report(report)
-        logger.info(f"✓ Analysis report saved to {report_path}")
 
         # Save CSV export
         csv_path = session.save_csv_export(classified_jobs)
@@ -840,13 +804,33 @@ Examples:
                 f"  {len(failed_jobs)} job(s) could not be scraped (see CSV for details)"
             )
 
-        # Populate and save session info
-        session.search_term = args.was if not args.classify_only else "N/A"
-        session.location = args.wo if not args.classify_only else "N/A"
-        session.total_jobs = total_jobs
-        session.classified_jobs = len(classified_jobs)
-        session_info_path = session.save_session_info()
-        logger.info(f"✓ Session info saved to {session_info_path}")
+        # Determine mode for summary
+        if args.from_database:
+            mode = f"From Database ({total_jobs} cached jobs)"
+        elif args.classify_only:
+            mode = "Classify Only"
+        else:
+            mode = "Search"
+
+        # Build profile info
+        profile_info = {}
+        if cv_content:
+            profile_info["cv_length"] = len(cv_content)
+        if args.perfect_job_description:
+            profile_info["perfect_job_length"] = len(args.perfect_job_description)
+
+        # Save session summary
+        summary_path = session.save_session_summary(
+            classified_jobs=classified_jobs,
+            total_jobs=total_jobs,
+            mode=mode,
+            model=args.model,
+            profile_info=profile_info if profile_info else None,
+            search_params=search_params,
+            return_only_matches=not args.return_all,
+            gathering_stats=report_gathering_stats,
+        )
+        logger.info(f"✓ Session summary saved to {summary_path}")
 
     # Additional custom output paths (if specified)
     if args.output:

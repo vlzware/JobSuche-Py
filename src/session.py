@@ -17,14 +17,16 @@ class SearchSession:
     Manages a single job search session with organized file structure:
 
     data/searches/YYYYMMDD_HHMMSS/
-    ├── debug/
-    │   ├── 01_raw_api_response.json
-    │   ├── 02_scraped_jobs.json
-    │   ├── 03_llm_request.txt
-    │   └── 04_llm_response.txt
-    ├── analysis_report.txt
+    ├── SUMMARY.txt
     ├── jobs_classified.json
-    └── jobs_all.csv
+    ├── jobs_all.csv
+    ├── jobs_failed.csv (if any failures)
+    └── debug/
+        ├── session.log
+        ├── *_prompt.txt
+        ├── *_response.txt
+        ├── *_thinking.md
+        └── *_full_response.json
     """
 
     def __init__(
@@ -32,8 +34,6 @@ class SearchSession:
         base_dir: str | None = None,
         timestamp: str | None = None,
         verbose: bool = True,
-        workflow: str | None = None,
-        classify_only: bool = False,
     ):
         """
         Initialize a new search session
@@ -42,8 +42,6 @@ class SearchSession:
             base_dir: Base directory for search sessions (defaults to value from paths_config.yaml)
             timestamp: Optional custom timestamp (defaults to current time)
             verbose: Whether to print logs to console (default: True)
-            workflow: Workflow type (multi-category, matching, brainstorm)
-            classify_only: Whether this is a classify-only session
         """
         if base_dir is None:
             base_dir = config.get("paths.directories.searches", "data/searches")
@@ -54,14 +52,6 @@ class SearchSession:
         self.timestamp = timestamp
         self.session_dir = Path(base_dir) / timestamp
         self.debug_dir = self.session_dir / "debug"
-        self.workflow = workflow
-        self.classify_only = classify_only
-
-        # Session metadata (to be populated during workflow)
-        self.search_term: str | None = None
-        self.location: str | None = None
-        self.total_jobs: int | None = None
-        self.classified_jobs: int | None = None
 
         # Create directories
         self.session_dir.mkdir(parents=True, exist_ok=True)
@@ -256,12 +246,155 @@ class SearchSession:
             json.dump(jobs, f, ensure_ascii=False, indent=2)
         return str(file_path)
 
-    def save_analysis_report(self, report: str):
-        """Save analysis report text file"""
-        filename = config.get("paths.files.output.analysis_report", "analysis_report.txt")
+    def save_session_summary(
+        self,
+        classified_jobs: list[dict],
+        total_jobs: int,
+        mode: str,
+        model: str,
+        profile_info: dict | None = None,
+        search_params: dict | None = None,
+        return_only_matches: bool = False,
+        gathering_stats: dict | None = None,
+        llm_stats: dict | None = None,
+    ):
+        """
+        Save a concise human-readable session summary
+
+        Args:
+            classified_jobs: List of classified jobs (possibly filtered)
+            total_jobs: Total number of jobs found/loaded
+            mode: Mode description (e.g., "From Database", "Search", "Classify Only")
+            model: LLM model used
+            profile_info: Dict with cv_length, perfect_job_length, etc.
+            search_params: Optional dict with was, wo, umkreis
+            return_only_matches: Whether filtering was applied
+            gathering_stats: Optional stats from workflow
+            llm_stats: Optional LLM usage stats (batches, tokens, etc.)
+
+        Returns:
+            Path to the saved summary file
+        """
+        filename = "SUMMARY.txt"
         file_path = self.session_dir / filename
+
+        # Build the summary
+        lines = []
+        lines.append("=" * 68)
+        lines.append("JOB SEARCH SUMMARY")
+        lines.append("=" * 68)
+
+        # Session metadata
+        timestamp_human = datetime.strptime(self.timestamp, "%Y%m%d_%H%M%S").strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        lines.append(f"Session:     {self.timestamp} ({timestamp_human})")
+        lines.append(f"Mode:        {mode}")
+        lines.append(f"Model:       {model}")
+
+        # Profile information
+        if profile_info:
+            profile_parts = []
+            if profile_info.get("cv_length"):
+                profile_parts.append(f"CV ({profile_info['cv_length']:,} chars)")
+            if profile_info.get("perfect_job_length"):
+                profile_parts.append(f"Perfect Job ({profile_info['perfect_job_length']:,} chars)")
+            if profile_parts:
+                lines.append(f"Profile:     {', '.join(profile_parts)}")
+
+        # Filter information
+        if return_only_matches:
+            lines.append("Filter:      Return only Good/Excellent matches")
+
+        # Search parameters (if applicable)
+        if search_params:
+            if search_params.get("was"):
+                lines.append(f"Search:      {search_params['was']}")
+            if search_params.get("wo"):
+                lines.append(f"Location:    {search_params['wo']}")
+            if search_params.get("umkreis"):
+                lines.append(f"Radius:      {search_params['umkreis']} km")
+
+        lines.append("")
+        lines.append("=" * 68)
+        lines.append("RESULTS")
+        lines.append("=" * 68)
+
+        # Calculate statistics
+        num_matches = len(classified_jobs)
+        category_counts: dict[str, int] = {}
+        for job in classified_jobs:
+            for category in job.get("categories", []):
+                category_counts[category] = category_counts.get(category, 0) + 1
+
+        # Results summary
+        lines.append(f"Total Jobs:           {total_jobs}")
+
+        if gathering_stats and gathering_stats.get("successfully_extracted") is not None:
+            successfully_scraped = gathering_stats["successfully_extracted"]
+            lines.append(
+                f"Successfully Scraped: {successfully_scraped} ({successfully_scraped/total_jobs*100:.1f}%)"
+            )
+
+        if return_only_matches:
+            # Show both total classified and matches
+            total_classified = (
+                gathering_stats.get("successfully_extracted", total_jobs)
+                if gathering_stats
+                else total_jobs
+            )
+            lines.append(f"Total Classified:     {total_classified}")
+            lines.append(
+                f"Matches Returned:     {num_matches} ({num_matches/total_classified*100:.1f}%)"
+            )
+        else:
+            lines.append(f"Successfully Matched: {num_matches} ({num_matches/total_jobs*100:.1f}%)")
+
+        # Category breakdown
+        if category_counts:
+            lines.append("")
+            sorted_categories = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
+            for category, count in sorted_categories:
+                percentage = (count / num_matches * 100) if num_matches > 0 else 0
+                lines.append(f"  - {category:20} {count:3} ({percentage:.1f}% of matches)")
+
+        # LLM statistics
+        if llm_stats:
+            lines.append("")
+            if llm_stats.get("num_batches"):
+                batch_info = llm_stats.get("batch_sizes", [])
+                if batch_info:
+                    batch_str = "+".join(str(s) for s in batch_info)
+                    lines.append(
+                        f"Batches:              {llm_stats['num_batches']} ({batch_str} jobs)"
+                    )
+                else:
+                    lines.append(f"Batches:              {llm_stats['num_batches']}")
+
+            if llm_stats.get("total_tokens"):
+                prompt_tokens = llm_stats.get("prompt_tokens", 0)
+                completion_tokens = llm_stats.get("completion_tokens", 0)
+                lines.append(
+                    f"Tokens:               {llm_stats['total_tokens']:,} "
+                    f"({prompt_tokens:,} prompt + {completion_tokens:,} completion)"
+                )
+
+        lines.append("")
+        lines.append("=" * 68)
+        lines.append("FILES")
+        lines.append("=" * 68)
+        lines.append("jobs_classified.json  - Full data with classifications")
+        lines.append("jobs_all.csv          - Spreadsheet view")
+        lines.append("debug/session.log     - Complete execution log")
+        lines.append("debug/*_thinking.md   - LLM reasoning (if available)")
+        lines.append("")
+        lines.append("Cost details: https://openrouter.ai/activity")
+        lines.append("=" * 68)
+
+        # Write to file
         with open(file_path, "w", encoding="utf-8") as f:
-            f.write(report)
+            f.write("\n".join(lines))
+
         return str(file_path)
 
     def save_csv_export(self, jobs: list[dict]):
@@ -319,35 +452,6 @@ class SearchSession:
 
         return str(file_path)
 
-    def save_session_info(self) -> str:
-        """
-        Save session metadata to a JSON file
-
-        Returns:
-            Path to the saved session info file
-        """
-        filename = "session_info.json"
-        file_path = self.session_dir / filename
-
-        # Prepare metadata
-        session_info = {
-            "timestamp": self.timestamp,
-            "timestamp_human": datetime.strptime(self.timestamp, "%Y%m%d_%H%M%S").strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-            "workflow": self.workflow or "unknown",
-            "classify_only": self.classify_only,
-            "search_term": self.search_term,
-            "location": self.location,
-            "total_jobs": self.total_jobs,
-            "classified_jobs": self.classified_jobs,
-        }
-
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(session_info, f, ensure_ascii=False, indent=2)
-
-        return str(file_path)
-
     def get_summary(self) -> str:
         """Get a summary of the session directory structure"""
         return f"""
@@ -355,14 +459,15 @@ Session directory: {self.session_dir}
 
 Structure:
   {self.session_dir}/
-  ├── debug/
-  │   ├── 01_raw_api_response.json
-  │   ├── 02_scraped_jobs.json
-  │   ├── 03_llm_request.txt
-  │   └── 04_llm_response.txt
-  ├── analysis_report.txt
+  ├── SUMMARY.txt
   ├── jobs_classified.json
-  └── jobs_all.csv
+  ├── jobs_all.csv
+  └── debug/
+      ├── session.log
+      ├── *_prompt.txt
+      ├── *_response.txt
+      ├── *_thinking.md
+      └── *_full_response.json
 """.strip()
 
     # Checkpoint management for resumable classification

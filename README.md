@@ -207,12 +207,12 @@ Each search creates a timestamped directory with:
 
 ```
 data/searches/YYYYMMDD_HHMMSS/
+├── SUMMARY.txt               # Human-readable session summary
 ├── jobs_classified.json      # Complete data with match classifications
 ├── jobs_all.csv              # Successfully parsed jobs (spreadsheet)
 ├── jobs_failed.csv           # Jobs that couldn't be scraped (title, employer, URL, error type)
-├── analysis_report.txt       # Statistics and insights
-├── session_info_*.json       # Session metadata (workflow, counts, parameters)
 └── debug/                    # Raw data for troubleshooting
+    ├── session.log           # Complete execution log
     ├── *_thinking.md         # LLM reasoning process (if available)
     └── ...
 ```

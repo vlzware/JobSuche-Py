@@ -14,5 +14,4 @@ files:
     llm_response: "04_llm_response.txt"
   output:
     classified_jobs: "jobs_classified.json"
-    analysis_report: "analysis_report.txt"
     csv_export: "jobs_all.csv"
