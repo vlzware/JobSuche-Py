@@ -414,9 +414,9 @@ Examples:
             args.perfect_job_description
         )
 
-    # Validate matching workflow requirements
+    # Validate matching workflow requirements (only if classification is enabled)
     # Matching workflow requires at least one of CV or perfect job description
-    if not args.cv and not args.perfect_job_description:
+    if not args.no_classification and not args.cv and not args.perfect_job_description:
         logger.error("Matching workflow requires at least one of:")
         logger.error("  --cv /path/to/cv.md")
         logger.error("  --perfect-job-description 'Description of ideal role...'")
