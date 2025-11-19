@@ -251,8 +251,7 @@ def classify_jobs(
         if was_truncated:
             job_id = job.get("refnr", "N/A")
             logger.error(
-                f"      ❌ Job [{job_id}] text truncated: "
-                f"{original_len:,} → {max_chars:,} chars"
+                f"      ❌ Job [{job_id}] text truncated: {original_len:,} → {max_chars:,} chars"
             )
             raise TruncationError(
                 job_id=str(job_id), original_length=original_len, truncated_length=max_chars
@@ -614,8 +613,7 @@ def classify_jobs_mega_batch(
         if original_len > max_chars_mega:
             ref_nr = job.get("refnr", "N/A")
             logger.error(
-                f"❌ Job [{ref_nr}] would be truncated: "
-                f"{original_len:,} → {max_chars_mega:,} chars"
+                f"❌ Job [{ref_nr}] would be truncated: {original_len:,} → {max_chars_mega:,} chars"
             )
             raise TruncationError(
                 job_id=str(ref_nr), original_length=original_len, truncated_length=max_chars_mega

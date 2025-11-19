@@ -16,16 +16,13 @@ _example output with matching workflow (fictional data)_
 
 ## Features
 
-- **Personalized Matching** — Find jobs that match YOUR skills and preferences
-- **Incremental fetching** — Automatic database caching to avoid redundant API calls
-- **AI Classification** — Automatically rate jobs as Excellent, Good, or Poor matches
-- **Batch processing** — Configurable batch size and mega-batch mode
-- **Cheap/free or smart/more expensive** — By choosing the right model
-- **Rich Exports** — JSON, CSV, and text reports with direct application links
-- **Configurable** — Customize matching criteria via custom prompts
-- **Resume from failures** — Automatic checkpoint recovery
-
-Focus on what matters: finding jobs that match YOU.
+- **Personalized Matching** — Find jobs matching your skills and preferences
+- **Incremental Updates** — Smart caching avoids redundant API calls
+- **AI Classification** — Rate jobs as Excellent, Good, or Poor matches
+- **Flexible Models** — Choose from cheap/fast to smart/expensive
+- **Rich Exports** — JSON, CSV, and text reports with application links
+- **Resume from Failures** — Automatic checkpoint recovery
+- **Customizable** — Adjust matching criteria via custom prompts
 
 ---
 
@@ -82,229 +79,101 @@ python main.py --was "Software Developer" --wo "Hamburg" \\
 python main.py --was "Python Developer" --cv cv.md
 ```
 
-**Note on `--wo` (location) parameter:**
-- If omitted, searches **all available listings** (not limited to Germany)
-- May include jobs from Austria and potentially other countries
-- To limit to Germany only, use: `--wo "Deutschland (Land)"`
+**Note on `--wo` (location):**
+- Omit to search **all available listings** (Germany, Austria, etc.)
+- Limit to Germany: `--wo "Deutschland (Land)"`
 
-That's it! Results are automatically saved to `data/searches/YYYYMMDD_HHMMSS/`
+Results save to `data/searches/YYYYMMDD_HHMMSS/`
 
-**📖 See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for complete workflow examples:**
-- First run with large datasets (with recovery patterns)
+**📖 See [docs/WORKFLOWS.md](docs/WORKFLOWS.md) for:**
 - Daily incremental updates
-- Re-classifying with updated CV/criteria
-- Database management and refresh scenarios
+- Re-classification with updated CV
+- Recovery from failures
+- Database management
 
 ---
 
 ## How It Works
 
-JobSuchePy uses AI to match jobs against your profile:
-
 1. **Search** — Query Arbeitsagentur API for jobs
-2. **Scrape** — Fetch full job descriptions (with application URLs)
-3. **Match** — AI rates each job based on your CV and/or ideal job description
-4. **Filter** — Return only Excellent and Good matches (configurable)
-5. **Export** — Save as JSON, CSV, or text
+2. **Scrape** — Fetch full descriptions with application URLs
+3. **Classify** — AI rates jobs as Excellent, Good, or Poor match
+4. **Export** — Save results as JSON, CSV, and text
 
-### Matching Criteria
-
-Jobs are classified into three categories:
-
-- **Excellent Match**: Strong alignment with your profile — start immediately with minimal ramp-up
-- **Good Match**: Realistic fit with some adaptation needed
-- **Poor Match**: Significant misalignment (filtered out by default)
-
-You can provide:
-- **CV only** — Match based on your skills and experience
-- **Perfect job description only** — Match based on your ideal role
-- **Both (recommended!)** — Match based on what you CAN do AND what you WANT to do
+**Matching Options:**
+- `--cv` — Match based on your skills/experience
+- `--perfect-job-description` — Match based on ideal role criteria
+- Both (recommended) — Match what you CAN do AND WANT to do
 
 ---
 
 ## Configuration
 
-### Incremental Fetching
+### Smart Caching
 
-JobSuchePy automatically caches jobs in a persistent database (`data/database/jobs.json`) to avoid redundant API calls, scraping, and classification.
+First run fetches all jobs and creates a database. Subsequent runs fetch only recent jobs (last 7 days by default), processing only new/modified ones.
 
-**How it works:**
-- **First run:** Fetches all jobs, creates database
-- **Subsequent runs:** Fetches only jobs published in last 7 days (default), skips unchanged jobs
-- **Smart merging:** Detects new jobs, modified jobs (by `modifikationsTimestamp`), and unchanged jobs
-- **Only processes delta:** Scrapes and classifies only new/updated jobs
-
-**Usage:**
 ```bash
-# First run - creates database with all jobs
+# First run - fetches all
 python main.py --was "Python Developer" --wo "Berlin" --cv cv.md
 
-# Next run - fetches only recent jobs (last 7 days)
+# Next run - only fetches recent (last 7 days)
 python main.py --was "Python Developer" --wo "Berlin" --cv cv.md
-# Output: "Database merge: 2 new, 1 updated, 185 unchanged"
-# Only processes 3 jobs instead of 188!
+# → "Database merge: 2 new, 1 updated, 185 unchanged" (processes only 3!)
 
-# Custom time window (1-100 days)
-python main.py --was "..." --wo "..." --cv cv.md --veroeffentlichtseit 1  # Last 24h
-python main.py --was "..." --wo "..." --cv cv.md --veroeffentlichtseit 30 # Last month
-
-# Force full refresh - delete database and run again
-rm data/database/jobs.json
-python main.py --was "..." --wo "..." --cv cv.md
+# Custom timeframe (1-100 days)
+python main.py --was "..." --cv cv.md --veroeffentlichtseit 1   # Last 24h
+python main.py --was "..." --cv cv.md --veroeffentlichtseit 30  # Last month
 ```
 
-**Configuration:** Edit `config/search_config.yaml`:
-```yaml
-defaults:
-  veroeffentlichtseit: 7  # Days for incremental updates (default: 7)
-```
+**Force refresh:** `rm data/database/jobs.json` then run again.
 
 ### Custom Prompts
 
-**Customize AI matching criteria:**
+Adjust AI matching criteria:
 
 ```bash
-# Copy the example template
 cp prompts.example.yaml prompts.yaml
-
-# Edit with your custom matching criteria
-nano prompts.yaml
+nano prompts.yaml  # Edit matching rules
 ```
 
-**Example `prompts.yaml`:**
-```yaml
-prompts:
-  cv_matching: |
-    Your custom prompt for CV-based job matching.
-    Adjust criteria to be more/less strict.
-    {cv_content} will be replaced with your CV.
-```
-
-This allows you to:
-- Adjust matching strictness (more/fewer matches)
-- Emphasize specific criteria (e.g., remote work, company size)
-- Add domain-specific evaluation rules
-- Fine-tune for your job search strategy
+Fine-tune strictness, emphasize criteria (remote work, company size), or add domain-specific rules.
 
 ### Models
 
-**Default:** `google/gemini-2.5-flash` (fast and cheap)
+**Default:** `google/gemini-2.5-flash` (fast, cheap)
 
-**Other options:**
 ```bash
 --model "google/gemini-2.5-pro"        # Better quality, more expensive
---model "google/gemini-2.5-flash-lite" # Cheapest, quickest
+--model "google/gemini-2.5-flash-lite" # Cheapest, fastest
 ```
 
-**Example Pricing** (per million tokens - input/output):
-- **Gemini Flash Lite:** \$0.10 / \$0.40 (cheapest)
-- **Gemini Flash:** \$0.30 / \$2.50 (default - good balance)
-- **Gemini Pro:** \$1.25 / \$10.00 (better quality)
+**Typical costs** (100-200 jobs): < $0.03 with Flash, < $0.10 with Pro.
 
-For my typical job searches (100-200 jobs), costs were usually < \$0.03 with Flash or < \$0.10 with Pro.
-
-Check [OpenRouter](https://openrouter.ai/) for current pricing, models, and options.
-
-**Reasoning and Reasoning Effort:** Use `--reasoning-effort high` with compatible models (Gemini Pro, Claude) for better accuracy at higher cost. When using a reasoning model, the thinking process is saved to `debug/*_thinking.md`.
+See [OpenRouter](https://openrouter.ai/) for pricing and models.
 
 ---
 
 ## Output
 
-Each search creates a timestamped directory with:
+Each search creates a timestamped directory:
 
 ```
 data/searches/YYYYMMDD_HHMMSS/
-├── SUMMARY.txt               # Human-readable session summary
-├── jobs_classified.json      # Complete data with match classifications
-├── jobs_all.csv              # Successfully parsed jobs (spreadsheet)
-├── jobs_failed.csv           # Jobs that couldn't be scraped (title, employer, URL, error type)
-└── debug/                    # Raw data for troubleshooting
-    ├── session.log           # Complete execution log
-    ├── *_thinking.md         # LLM reasoning process (if available)
-    └── ...
+├── SUMMARY.txt            # Human-readable summary
+├── jobs_classified.json   # Complete data with classifications
+├── jobs_all.csv          # Successfully scraped jobs
+├── jobs_failed.csv       # Failed scrapes with error types
+└── debug/                # Logs and raw data
 ```
-
----
-
-## Re-Classification
-
-Re-classify existing data without re-fetching or re-scraping from Arbeitsagentur.
-
-### Common Scenarios
-
-**1. Classification Failed (LLM Error)**
-```bash
-# Resume from checkpoint automatically
-python main.py --classify-only --input data/searches/20231117_140000 --cv cv.md
-```
-
-**2. Changed Classification Criteria (Single Session)**
-```bash
-# Updated CV or perfect job description - re-classify specific session(s)
-python main.py --classify-only --input data/searches/20231117_140000 \\
-    --cv cv_updated.md --perfect-job-description new_dream.txt
-
-# Try different model
-python main.py --classify-only --input data/searches/20231117_140000 \\
-    --cv cv.md --model "google/gemini-2.5-pro"
-```
-
-**3. Re-Classify ENTIRE Database (All Jobs)**
-```bash
-# Re-classify ALL jobs in database with new criteria (one command!)
-python main.py --from-database --cv cv_updated.md --perfect-job-description new_dream.txt
-
-# Try different model
-python main.py --from-database --cv cv.md --model "google/gemini-2.5-pro"
-```
-
-**Why?** Database contains ALL jobs you've ever searched (potentially 1000s across multiple searches). `--from-database` loads them all for re-classification with updated CV/criteria/model without re-fetching from Arbeitsagentur.
-
-**4. Fresh Start (Delete Cache)**
-```bash
-# Force re-fetch everything from Arbeitsagentur
-rm data/database/jobs.json
-python main.py --was "Python Developer" --wo "Berlin" --cv cv.md
-```
-
-**Technical Details:**
-- Uses `debug/02_scraped_jobs.json` (raw scraped data without classifications)
-- Automatically resumes from checkpoint if classification was interrupted
-- Use `--no-resume` to discard checkpoint and start fresh
-
-
-### Auto-Resume After Errors
-
-Classification automatically saves checkpoints after each mega-batch. If classification fails mid-process (LLM failure, API errors, network issues, etc.), simply re-run `--classify-only` with the same session to resume from where it left off:
-
-```bash
-# First run - fails at job 150/300
-python main.py --classify-only --input data/searches/20231020_142830 --cv cv.md
-
-# Re-run - automatically resumes from job 150
-python main.py --classify-only --input data/searches/20231020_142830 --cv cv.md
-```
-
-**Fresh restart:** Use `--no-resume` to discard checkpoint and restart classification.
-
-Checkpoint files (`debug/classification_checkpoint.json`, `debug/partial_classified_jobs.json`) are automatically cleaned up after successful completion.
 
 ---
 
 ## Known Limitations
 
-- External scraping success rate varies by site (some sites require JavaScript/SPA)
-  - Failed scrapes are tracked in `jobs_failed.csv` with error types
-  - Common issues: JS_REQUIRED (Single Page Applications), SHORT_CONTENT, TIMEOUT
+**Scraping:** Some sites require JavaScript or have bot protection (e.g., germantechjobs.de). Failed scrapes are logged in `jobs_failed.csv` with error types.
 
-From my personal testing with tech-related criteria, the biggest culprit is germantechjobs.de, which is an SPA and has some bot protection. From a recent search, I got 112 jobs scraped from a total of 149. Almost all (31) of the failed jobs (37) were from this site. In another search with different criteria, I got only 21 errors from a total of 511 jobs scraped, so your mileage may vary.
-
----
-
-## Errors with LLM-Classifications
-
-If there is even the slightest misalignment between our request and the data returned from the LLM, an exception is thrown and the current task gets interrupted because we can't rely on this data anymore. Because of the inherent variability of LLMs you may need to rerun the search in such cases until you get a proper result. Alternatively, you can try a smaller batch size or a different model.
+**LLM variability:** Classification may occasionally fail due to unexpected model responses. Use `--session` to resume, try a different model, or adjust batch size.
 
 ---
 

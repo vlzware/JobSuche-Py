@@ -74,7 +74,7 @@ def disable_job(
     details["error"] = reason
     details["text_length"] = len(reason)
 
-    print(f"  New text: \"{details['text']}\"")
+    print(f'  New text: "{details["text"]}"')
     print(f"  New success: {details['success']}")
     print(f"  New warning: {details['warning']}")
 

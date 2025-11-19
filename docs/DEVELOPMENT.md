@@ -143,44 +143,105 @@ jobsuche-py/
 
 ---
 
-## Key Features
+## Architecture Details
 
 ### Incremental Job Fetching
 
-**Architecture:** Persistent job caching to minimize redundant API calls and scraping.
+**Problem:** Fetching and processing 100s of jobs daily is expensive (API calls, scraping, LLM costs).
+
+**Solution:** Persistent job caching with smart delta detection.
 
 **Database** (`data/database/jobs.json`):
 - Persistent cache in current working directory
-- Keys jobs by `refnr` (unique job ID)
-- Detects new, updated, and unchanged jobs via `modifikationsTimestamp`
+- Keys jobs by `refnr` (unique job ID from Arbeitsagentur)
+- Stores scraped job details (full descriptions, URLs, metadata)
+- Does NOT store classifications (those live in sessions)
 
 **Merge Algorithm:**
-- **New job:** `refnr` not in database → Add, mark for processing
-- **Updated job:** `refnr` exists, `modifikationsTimestamp` differs → Update, re-classify
-- **Unchanged job:** `refnr` exists, `modifikationsTimestamp` identical → Skip processing
+1. **First run:** Database empty → fetch all jobs → create database
+2. **Subsequent runs:** Database exists → fetch only last N days (default: 7)
+3. **Merge logic:**
+   - **New job:** `refnr` not in database → Add, mark for processing
+   - **Updated job:** `refnr` exists, `modifikationsTimestamp` differs → Update, re-process
+   - **Unchanged job:** `refnr` exists, `modifikationsTimestamp` identical → Skip processing
+
+**Configuration:**
+- `config/search_config.yaml`: Set `veroeffentlichtseit` (days) for incremental window
+- CLI override: `--veroeffentlichtseit N` (1-100 days)
 
 **Performance Impact:**
-- **First run:** Full processing (e.g., 200 jobs × 1.5s = ~5 minutes)
-- **Incremental run:** Delta only (e.g., 5 new jobs × 1.5s = ~8 seconds)
+- **First run:** 200 jobs × 1.5s = ~5 minutes
+- **Incremental:** 5 new jobs × 1.5s = ~8 seconds
 - **API savings:** ~95% reduction for daily updates
 - **LLM cost savings:** Only classify new/modified jobs
 
-### Session Merging
+### Session Management & Checkpoints
 
-The `SessionMerger` class enables merging multiple search sessions:
+**Session Structure:**
+- Each run creates timestamped directory: `data/searches/YYYYMMDD_HHMMSS/`
+- Contains classifications, results, and checkpoints for that run
+- Database remains single source of truth for scraped job data
 
-```bash
-python main.py --classify-only \
-    --input data/searches/session1 data/searches/session2 \
-    --cv cv.md
+**Checkpoint System:**
+- Saved after each mega-batch during classification
+- Files: `debug/classification_checkpoint.json`, `debug/partial_classified_jobs.json`
+- Automatic resume on re-run with `--session <timestamp>`
+- Cleanup after successful completion
+
+**Use Cases:**
+1. **LLM failures mid-classification:**
+   ```bash
+   # First run fails at job 1500/3600
+   python main.py --from-database --cv cv.md
+   # → Session: data/searches/20231125_150000
+
+   # Resume from checkpoint
+   python main.py --from-database --cv cv.md --session 20231125_150000
+   ```
+
+2. **Re-classification workflows:**
+   - `--from-database` loads ALL jobs from database (no API calls)
+   - Creates new session with updated classifications
+   - Database unchanged (still has original scraped data)
+
+**Session Metadata:**
+- `session_info_MA.json` — Workflow type, search parameters, job counts
+- `debug/*_thinking.md` — LLM reasoning (if model supports it)
+- `debug/session.log` — Complete execution log
+
+### LLM Error Handling
+
+**Challenge:** LLM responses are non-deterministic; unexpected formats break classification.
+
+**Strategy:**
+- **Strict validation:** Throw exception on any format mismatch
+- **Fail fast:** Don't continue with unreliable data
+- **Checkpoint recovery:** Resume from last successful batch
+- **User options:**
+  - Re-run with `--session` to resume
+  - Try different model: `--model "google/gemini-2.5-pro"`
+  - Reduce batch size to minimize impact of failures
+
+**Common Issues:**
+- Timeout/rate limits → Resume with `--session`
+- Format errors → Try different model
+- Repeated failures → Check prompts.yaml or reduce batch size
+
+### Database vs Session Flow
+
+**Normal Search:**
+```
+API → Database (scraped jobs) → Session (classifications)
 ```
 
-**Use case:** Search for multiple job titles (e.g., "Python Developer", "Backend Engineer"), then merge and classify together. Jobs are deduplicated by `refnr`.
+**Incremental Search:**
+```
+API (last 7 days) → Merge with Database → Session (classify delta only)
+```
 
-### Session Metadata
-
-Each session saves:
-- **Session info** (`session_info_MA.json`) - Workflow type, search parameters, job counts
-- **LLM thinking** (`debug/*_thinking.md`) - Extracted reasoning from models that support it
+**Re-classification:**
+```
+Database (all jobs) → Session (new classifications, new criteria)
+```
 
 ---

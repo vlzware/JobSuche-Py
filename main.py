@@ -182,16 +182,12 @@ Examples:
   # Return ALL jobs including poor matches (default: only good & excellent)
   python main.py --was "Developer" --wo "Berlin" --cv cv.md --return-all
 
-  # Re-classify existing jobs using session directory
-  python main.py --classify-only --input data/searches/20231020_142830 --cv cv_updated.md
-
-  # Or specify a JSON file directly
-  python main.py --classify-only --input data/searches/20231020_142830/debug/02_scraped_jobs.json \\
-      --cv cv.md --perfect-job-description perfect.txt
-
   # Re-classify ALL jobs from database with updated CV/criteria
   python main.py --from-database --cv cv_updated.md
   python main.py --from-database --cv cv.md --perfect-job-description new_dream.txt
+
+  # Resume interrupted classification from database (use session timestamp)
+  python main.py --from-database --cv cv.md --session 20251119_164504
         """,
     )
 
@@ -299,17 +295,6 @@ Examples:
 
     # Processing options
     parser.add_argument(
-        "--classify-only",
-        action="store_true",
-        help="Classify existing jobs from JSON file or session directory (use with --input)",
-    )
-    parser.add_argument(
-        "--input",
-        type=str,
-        help="Input JSON file or session directory (use with --classify-only). "
-        "If directory: uses debug/02_scraped_jobs.json (raw scraped data).",
-    )
-    parser.add_argument(
         "--no-scraping",
         action="store_true",
         help="Skip scraping job details - only collect basic listing info (titles, employer, location) from Arbeitsagentur API",
@@ -334,56 +319,33 @@ Examples:
         help="Classify all jobs from database with new criteria (updated CV, categories, or model)",
     )
     parser.add_argument(
+        "--session",
+        type=str,
+        help="Resume existing session by timestamp (e.g., 20251119_164504). Used with --from-database to resume interrupted classification.",
+    )
+    parser.add_argument(
         "--no-resume",
         action="store_true",
         help="Ignore checkpoint and start fresh classification (deletes partial progress)",
     )
     parser.add_argument("--quiet", action="store_true", help="Suppress progress output")
 
-    # Parse arguments with better error handling
-    try:
-        args = parser.parse_args()
-    except SystemExit:
-        # Check if user forgot --input with --classify-only
-        if "--classify-only" in sys.argv:
-            # Look for what might be a path argument without --input
-            for arg in sys.argv[1:]:
-                if not arg.startswith("--") and arg != sys.argv[0] and "/" in arg:
-                    logger.error("")
-                    logger.error(f"Did you forget '--input' before '{arg}'?")
-                    logger.error(f"Correct usage: python main.py --classify-only --input {arg}")
-                    logger.error("")
-        raise
+    # Parse arguments
+    args = parser.parse_args()
 
-    # Validate classify-only mode
-    if args.classify_only:
-        if not args.input:
-            logger.error("--classify-only requires --input <file.json or session_directory>")
-            logger.error("Usage: python main.py --classify-only --input <path>")
+    # Validate session timestamp format if provided
+    if args.session:
+        import re
+
+        if not re.match(r"^\d{8}_\d{6}$", args.session):
+            logger.error("--session must be in format YYYYMMDD_HHMMSS (e.g., 20251119_164504)")
             sys.exit(1)
-
-        # Validate input path exists
-        input_path = Path(args.input)
-        if not input_path.exists():
-            logger.error(f"Input path not found: {args.input}")
-            sys.exit(1)
-
-        if args.no_classification:
-            logger.error("--classify-only and --no-classification are mutually exclusive")
+        if not args.from_database:
+            logger.error("--session can only be used with --from-database")
             sys.exit(1)
 
     # Validate from-database mode
     if args.from_database:
-        if args.input:
-            logger.error("--from-database and --input are mutually exclusive")
-            logger.error("--from-database loads ALL jobs from the database automatically")
-            sys.exit(1)
-
-        if args.classify_only:
-            logger.error("--from-database and --classify-only are mutually exclusive")
-            logger.error("Use --from-database alone (it implies classification)")
-            sys.exit(1)
-
         if args.no_classification:
             logger.error("--from-database requires classification (can't use --no-classification)")
             sys.exit(1)
@@ -393,10 +355,10 @@ Examples:
             logger.error("It uses ALL jobs already in the database")
             sys.exit(1)
 
-    if not args.classify_only and not args.from_database:
+    if not args.from_database:
         # Normal mode requires search parameters
         if not args.was:
-            logger.error("--was is required (unless using --classify-only or --from-database)")
+            logger.error("--was is required (unless using --from-database)")
             logger.error("Run 'python main.py --help' for usage information")
             sys.exit(1)
 
@@ -444,8 +406,12 @@ Examples:
 
     verbose = not args.quiet
 
-    # Create search session
-    session = SearchSession(verbose=verbose)
+    # Create or resume search session
+    if args.session:
+        session = SearchSession(timestamp=args.session, verbose=verbose)
+        logger.info(f"Resuming session: {args.session}")
+    else:
+        session = SearchSession(verbose=verbose)
 
     if session:
         logger.info(f"Session directory: {session.session_dir}")
@@ -550,74 +516,6 @@ Examples:
         # Set total_jobs for statistics display
         total_jobs = len(raw_jobs)
 
-    # CLASSIFY-ONLY MODE: Load jobs from JSON file or session directory
-    elif args.classify_only:
-        input_path = Path(args.input)
-
-        # If it's a directory, resolve to raw scraped data
-        if input_path.is_dir():
-            scraped_jobs_path = input_path / "debug" / "02_scraped_jobs.json"
-            if scraped_jobs_path.exists():
-                input_file = scraped_jobs_path
-                logger.info(f"Loading jobs from session: {input_path.name}")
-            else:
-                logger.error(f"Raw scraped data not found in session: {input_path}")
-                logger.error(f"Expected: {scraped_jobs_path}")
-                sys.exit(1)
-        else:
-            input_file = input_path
-            logger.info(f"Loading jobs from file: {input_file}")
-
-        with open(input_file, encoding="utf-8") as f:
-            raw_jobs = json.load(f)
-
-        total_jobs = len(raw_jobs)
-        logger.info(f"✓ Loaded {total_jobs} raw jobs")
-
-        # Extract and flatten job data (arbeitsort.ort -> ort, details.url -> url, etc.)
-        # This also filters out failed scrapes (JS_REQUIRED, SHORT_CONTENT, etc.)
-        from src.scraper import extract_descriptions
-
-        jobs, failed_jobs = extract_descriptions(raw_jobs)
-
-        logger.info(f"✓ Extracted {len(jobs)} valid job descriptions")
-        if failed_jobs:
-            logger.warning(
-                f"✗ Skipping {len(failed_jobs)} jobs with incomplete/failed scraping data"
-            )
-
-        # Create LLM processor and workflow
-        llm_processor = LLMProcessor(
-            api_key=api_key, model=args.model, session=session, verbose=verbose
-        )
-
-        # Create and run matching workflow
-        try:
-            matching_workflow = MatchingWorkflow(
-                llm_processor=llm_processor,
-                session=session,
-                verbose=verbose,
-            )
-            classified_jobs = matching_workflow.run_from_file(
-                jobs=jobs,
-                resume=not args.no_resume,
-                cv_content=cv_content,
-                perfect_job_description=args.perfect_job_description,
-                return_only_matches=not args.return_all,
-                batch_size=args.batch_size,
-            )
-
-        except (
-            LLMDataIntegrityError,
-            LLMResponseError,
-            OpenRouterAPIError,
-            WorkflowConfigurationError,
-            EmptyJobContentError,
-        ) as e:
-            handle_classification_error(e)
-
-        # failed_jobs already extracted from raw data above
-
     # NORMAL MODE: Search, scrape, classify
     else:
         # Skip classification if requested
@@ -714,15 +612,15 @@ Examples:
             # No filtering: total_classified = returned count
             total_classified = successful_fetches if not args.return_all else len(classified_jobs)
         else:
-            # classify-only mode or no workflow
-            # In classify-only mode, we have access to failed_jobs from extract_descriptions() above
+            # from-database mode or no workflow
+            # In from-database mode, we have access to failed_jobs from extract_descriptions() above
             error_count = len(failed_jobs)
             successful_fetches = len(jobs)  # Jobs with successful extraction
-            total_jobs_for_dashboard = total_jobs  # All jobs from the raw file
+            total_jobs_for_dashboard = total_jobs  # All jobs from database
 
-            # In classify-only or from-database mode, check if filtering was requested
-            if (args.classify_only or args.from_database) and not args.return_all:
-                # All jobs in input file/database were classified
+            # In from-database mode, check if filtering was requested
+            if args.from_database and not args.return_all:
+                # All jobs in database were classified
                 total_classified = total_jobs  # total_jobs was set earlier
             else:
                 total_classified = len(classified_jobs)
@@ -749,9 +647,9 @@ Examples:
 
         # Prepare data for summary
         search_params = {
-            "was": args.was if not args.classify_only else None,
-            "wo": args.wo if not args.classify_only else None,
-            "umkreis": args.umkreis if not args.classify_only else None,
+            "was": args.was if not args.from_database else None,
+            "wo": args.wo if not args.from_database else None,
+            "umkreis": args.umkreis if not args.from_database else None,
         }
 
         # Get gathering stats from workflow if available
@@ -774,12 +672,7 @@ Examples:
             )
 
         # Determine mode for summary
-        if args.from_database:
-            mode = f"From Database ({total_jobs} cached jobs)"
-        elif args.classify_only:
-            mode = "Classify Only"
-        else:
-            mode = "Search"
+        mode = f"From Database ({total_jobs} cached jobs)" if args.from_database else "Search"
 
         # Build profile info
         profile_info = {}
