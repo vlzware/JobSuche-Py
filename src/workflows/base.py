@@ -160,6 +160,21 @@ class BaseWorkflow(ABC):
                 completed_refnrs = set(checkpoint.get("completed_jobs", []))
                 partial_results = self.session.load_partial_results()
 
+                # Filter partial results if return_only_matches is True (matching workflow)
+                if kwargs.get("return_only_matches", False):
+                    original_count = len(partial_results)
+                    partial_results = [
+                        job
+                        for job in partial_results
+                        if any(
+                            cat in job.get("categories", [])
+                            for cat in ["Excellent Match", "Good Match"]
+                        )
+                    ]
+                    if self.verbose and original_count > len(partial_results):
+                        filtered_count = original_count - len(partial_results)
+                        print(f"\n✓ Filtered {filtered_count} Poor Match(es) from partial results")
+
                 # Filter out already-classified jobs
                 jobs_to_process = [
                     job for job in jobs if job.get("refnr", "") not in completed_refnrs
