@@ -391,7 +391,8 @@ class SearchSession:
         lines.append("FILES")
         lines.append("=" * 68)
         lines.append("jobs_classified.json  - Full data with classifications")
-        lines.append("jobs_all.csv          - Spreadsheet view")
+        lines.append("jobs_all.csv          - Spreadsheet view (sorted by category)")
+        lines.append("jobs_all.html         - Interactive browser view with links")
         lines.append("debug/session.log     - Complete execution log")
         lines.append("debug/*_thinking.md   - LLM reasoning (if available)")
         lines.append("")
@@ -405,8 +406,25 @@ class SearchSession:
         return str(file_path)
 
     def save_csv_export(self, jobs: list[dict]):
-        """Save CSV export of jobs"""
+        """Save CSV export of jobs (sorted by category priority, then by title)"""
         import csv
+
+        # Define category priority for sorting (lower number = higher priority)
+        category_priority = {
+            "Excellent Match": 0,
+            "Good Match": 1,
+            "Poor Match": 2,
+        }
+
+        # Sort jobs: first by category priority, then alphabetically by title
+        def sort_key(job):
+            categories = job.get("categories", [])
+            # Get highest priority category (lowest number)
+            priority = min((category_priority.get(cat, 999) for cat in categories), default=999)
+            title = job.get("titel", "").lower()
+            return (priority, title)
+
+        sorted_jobs = sorted(jobs, key=sort_key)
 
         filename = config.get("paths.files.output.csv_export", "jobs_all.csv")
         file_path = self.session_dir / filename
@@ -414,7 +432,7 @@ class SearchSession:
             writer = csv.writer(f)
             writer.writerow(["Titel", "Ort", "Arbeitgeber", "Categories", "URL"])
 
-            for job in jobs:
+            for job in sorted_jobs:
                 writer.writerow(
                     [
                         job.get("titel", ""),
@@ -458,6 +476,24 @@ class SearchSession:
                 )
 
         return str(file_path)
+
+    def save_html_export(self, jobs: list[dict]):
+        """
+        Save HTML export of jobs with interactive features
+
+        Args:
+            jobs: List of classified jobs
+
+        Returns:
+            Path to the saved HTML file
+        """
+        from .exporters import HTMLExporter
+
+        filename = config.get("paths.files.output.html_export", "jobs_all.html")
+        file_path = self.session_dir / filename
+
+        exporter = HTMLExporter()
+        return exporter.export(jobs, file_path)
 
     def get_summary(self) -> str:
         """Get a summary of the session directory structure"""

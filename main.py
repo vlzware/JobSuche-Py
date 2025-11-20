@@ -249,6 +249,12 @@ Examples:
         help=f"OpenRouter model to use (default: {default_model})",
     )
     parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="LLM temperature (0.0-1.0). Lower = more deterministic. Default from config (0.1).",
+    )
+    parser.add_argument(
         "--api-key", type=str, help="OpenRouter API key (or set OPENROUTER_API_KEY env var)"
     )
     parser.add_argument(
@@ -332,6 +338,11 @@ Examples:
 
     # Parse arguments
     args = parser.parse_args()
+
+    # Override temperature if provided
+    if args.temperature is not None:
+        config.set("llm.inference.temperature", args.temperature)
+        logger.info(f"Using temperature: {args.temperature}")
 
     # Validate session timestamp format if provided
     if args.session:
@@ -694,6 +705,10 @@ Examples:
         # Save CSV export
         csv_path = session.save_csv_export(classified_jobs)
         logger.info(f"✓ CSV export saved to {csv_path}")
+
+        # Save HTML export
+        html_path = session.save_html_export(classified_jobs)
+        logger.info(f"✓ HTML export saved to {html_path}")
 
         # Save failed jobs CSV (if any failures)
         if failed_jobs:

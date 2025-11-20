@@ -110,6 +110,28 @@ class Config:
 
         return value
 
+    def set(self, path: str, value: Any) -> None:
+        """Set a configuration value using dot notation.
+
+        Args:
+            path: Dot-separated path to the config value (e.g., "llm.inference.temperature")
+            value: Value to set
+
+        Example:
+            >>> config.set("llm.inference.temperature", 0.5)
+        """
+        parts = path.split(".")
+        current = self._configs
+
+        # Navigate to the parent dict, creating nested dicts as needed
+        for part in parts[:-1]:
+            if part not in current or not isinstance(current[part], dict):
+                current[part] = {}
+            current = current[part]
+
+        # Set the final value
+        current[parts[-1]] = value
+
     @property
     def api(self) -> dict[str, Any]:
         """Get API configuration."""
