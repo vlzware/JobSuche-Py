@@ -52,7 +52,7 @@ class OpenRouterClient:
         self,
         prompt: str,
         model: str,
-        temperature: float = 0.1,
+        temperature: float,
         max_tokens: int | None = None,
         extra_params: dict | None = None,
         timeout: int = 60,
@@ -96,7 +96,7 @@ class OpenRouterClient:
 
         # Make the request
         response = self.http_client.post(
-            url=self.config.get("api.openrouter.endpoint"),
+            url=self.config.get_required("api.openrouter.endpoint"),
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",

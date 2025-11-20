@@ -155,3 +155,19 @@ class APIError(JobSucheError):
     """Arbeitsagentur API errors"""
 
     pass
+
+
+class ConfigurationError(JobSucheError):
+    """
+    Raised when required configuration values are missing or invalid.
+
+    This ensures the config file is the single source of truth - missing required
+    values are caught early rather than silently falling back to hardcoded defaults.
+    """
+
+    def __init__(self, message: str, config_key: str | None = None):
+        self.config_key = config_key
+        if config_key:
+            super().__init__(f"Configuration error for '{config_key}': {message}")
+        else:
+            super().__init__(f"Configuration error: {message}")

@@ -252,7 +252,7 @@ Examples:
         "--temperature",
         type=float,
         default=None,
-        help="LLM temperature (0.0-1.0). Lower = more deterministic. Default from config (0.1).",
+        help="LLM temperature (0.0-1.0). Lower = more deterministic. Default from config (0.2).",
     )
     parser.add_argument(
         "--api-key", type=str, help="OpenRouter API key (or set OPENROUTER_API_KEY env var)"

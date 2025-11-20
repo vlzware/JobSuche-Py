@@ -9,6 +9,8 @@ from typing import Any, cast
 
 import yaml
 
+from src.exceptions import ConfigurationError
+
 
 class Config:
     """Configuration manager that loads and provides access to all config files."""
@@ -107,6 +109,39 @@ class Config:
                 value = value[part]
             else:
                 return default
+
+        return value
+
+    def get_required(self, path: str) -> Any:
+        """Get a required configuration value. Raises ConfigurationError if missing.
+
+        This method enforces that the config file is the single source of truth.
+        Use this for values that MUST be present in the config file.
+
+        Args:
+            path: Dot-separated path to the config value (e.g., "llm.inference.temperature")
+
+        Returns:
+            The configuration value
+
+        Raises:
+            ConfigurationError: If the configuration value is not found
+
+        Example:
+            >>> config.get_required("llm.inference.temperature")
+            0.2
+        """
+        parts = path.split(".")
+        value = self._configs
+
+        for part in parts:
+            if isinstance(value, dict) and part in value:
+                value = value[part]
+            else:
+                raise ConfigurationError(
+                    f"Required configuration value not found. Please add '{path}' to your config file.",
+                    config_key=path,
+                )
 
         return value
 

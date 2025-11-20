@@ -109,7 +109,7 @@ def classify_job_description(
         config_obj = config
 
     if model is None:
-        model = config_obj.get("llm.models.default", "google/gemini-2.5-flash")
+        model = config_obj.get_required("llm.models.default")
 
     # Determine the appropriate fallback category for this workflow
     fallback_category = get_fallback_category(categories)
@@ -118,7 +118,7 @@ def classify_job_description(
     categories_str = ", ".join(f'"{cat}"' for cat in categories)
     guidance = build_category_guidance(categories, category_definitions)
 
-    max_chars = config_obj.get("processing.limits.job_text_single_job", 3000)
+    max_chars = config_obj.get_required("processing.limits.job_text_single_job")
 
     prompt = f"""Analyze the following German job description and identify which of these categories apply:
 {categories_str}
@@ -141,7 +141,7 @@ Return format example: ["Java", "Agile Projektentwicklung"]
         content, _full_response = client.complete(
             prompt=prompt,
             model=model,
-            temperature=config_obj.get("llm.inference.temperature", 0.1),
+            temperature=config_obj.get_required("llm.inference.temperature"),
             timeout=config_obj.get("api.timeouts.classification", 30),
             session=None,  # Single job classification doesn't use session
         )
@@ -227,7 +227,7 @@ def classify_jobs(
         config_obj = config
 
     if model is None:
-        model = config_obj.get("llm.models.default", "google/gemini-2.5-flash")
+        model = config_obj.get_required("llm.models.default")
 
     if api_key is None:
         api_key = os.getenv("OPENROUTER_API_KEY")
@@ -238,7 +238,7 @@ def classify_jobs(
             )
 
     classified_jobs = []
-    max_chars = config_obj.get("processing.limits.job_text_single_job", 3000)
+    max_chars = config_obj.get_required("processing.limits.job_text_single_job")
 
     for idx, job in enumerate(jobs, 1):
         logger.info(f"Classifying job {idx}/{len(jobs)}: {job.get('titel', 'N/A')}")
@@ -327,7 +327,7 @@ def classify_jobs_batch(
         config_obj = config
 
     if model is None:
-        model = config_obj.get("llm.models.default", "google/gemini-2.5-flash")
+        model = config_obj.get_required("llm.models.default")
 
     if api_key is None:
         api_key = os.getenv("OPENROUTER_API_KEY")
@@ -353,7 +353,7 @@ def classify_jobs_batch(
         categories_str = ", ".join(f'"{cat}"' for cat in categories)
         guidance = build_category_guidance(categories, category_definitions)
 
-        max_chars_batch = config_obj.get("processing.limits.job_text_batch", 1000)
+        max_chars_batch = config_obj.get_required("processing.limits.job_text_batch")
         jobs_text = ""
 
         for idx, job in enumerate(batch):
@@ -404,7 +404,7 @@ Return ONLY the lines with job IDs and categories, nothing else.
             content, _full_response = client.complete(
                 prompt=prompt,
                 model=model,
-                temperature=config_obj.get("llm.inference.temperature", 0.1),
+                temperature=config_obj.get_required("llm.inference.temperature"),
                 extra_params=extra_api_params,
                 timeout=config_obj.get("api.timeouts.batch_classification", 60),
                 session=session,
@@ -546,7 +546,7 @@ def classify_jobs_mega_batch(
         config_obj = config
 
     if model is None:
-        model = config_obj.get("llm.models.default", "google/gemini-2.5-flash")
+        model = config_obj.get_required("llm.models.default")
 
     if api_key is None:
         api_key = os.getenv("OPENROUTER_API_KEY")
@@ -554,7 +554,7 @@ def classify_jobs_mega_batch(
             raise ValueError("OpenRouter API key required")
 
     # Check if we need to split into multiple mega-batches to avoid context overflow
-    max_jobs_per_batch = config_obj.get("processing.limits.max_jobs_per_mega_batch", 100)
+    max_jobs_per_batch = config_obj.get_required("processing.limits.max_jobs_per_mega_batch")
 
     if len(jobs) > max_jobs_per_batch:
         # Split into multiple mega-batches
@@ -630,7 +630,7 @@ def classify_jobs_mega_batch(
     categories_str = ", ".join(f'"{cat}"' for cat in categories)
     guidance = build_category_guidance(categories, category_definitions)
 
-    max_chars_mega = config_obj.get("processing.limits.job_text_mega_batch", 25000)
+    max_chars_mega = config_obj.get_required("processing.limits.job_text_mega_batch")
 
     # Build mega-batch prompt with ALL jobs using ID-based markdown format
     jobs_text = ""
@@ -680,7 +680,7 @@ Return ONLY the lines with job IDs and categories, nothing else.
         content, full_response = client.complete(
             prompt=prompt,
             model=model,
-            temperature=config_obj.get("llm.inference.temperature", 0.1),
+            temperature=config_obj.get_required("llm.inference.temperature"),
             extra_params=extra_api_params,
             timeout=config_obj.get("api.timeouts.mega_batch_classification", 120),
             session=session,

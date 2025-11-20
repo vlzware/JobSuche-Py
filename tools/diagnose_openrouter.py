@@ -148,13 +148,14 @@ def test_model(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        "X-Title": "(test)",
     }
 
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": "Say 'OK' in one word"}],
         "max_tokens": 10,
-        "temperature": 0.1,
+        "temperature": 0.2,
     }
 
     try:

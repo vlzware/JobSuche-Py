@@ -64,12 +64,12 @@ def search_jobs(
     if umkreis is None:
         umkreis = config_obj.get("search.defaults.radius_km", 25)
 
-    base_url = config_obj.get("api.arbeitsagentur.base_url")
+    base_url = config_obj.get_required("api.arbeitsagentur.base_url")
 
     headers = {
-        "User-Agent": config_obj.get("api.arbeitsagentur.headers.user_agent"),
-        "Host": config_obj.get("api.arbeitsagentur.headers.host"),
-        "X-API-Key": config_obj.get("api.arbeitsagentur.headers.api_key"),
+        "User-Agent": config_obj.get_required("api.arbeitsagentur.headers.user_agent"),
+        "Host": config_obj.get_required("api.arbeitsagentur.headers.host"),
+        "X-API-Key": config_obj.get_required("api.arbeitsagentur.headers.api_key"),
         "Connection": "keep-alive",
     }
 
@@ -78,9 +78,12 @@ def search_jobs(
 
     for page in range(1, max_pages + 1):
         params = [
-            ("angebotsart", config_obj.get("api.arbeitsagentur.params.angebotsart")),
+            ("angebotsart", config_obj.get_required("api.arbeitsagentur.params.angebotsart")),
             ("page", page),
-            ("pav", config_obj.get("api.arbeitsagentur.params.pav")),  # Personalvermittlung
+            (
+                "pav",
+                config_obj.get_required("api.arbeitsagentur.params.pav"),
+            ),  # Personalvermittlung
             ("size", size),
             ("umkreis", umkreis),
             ("was", was),

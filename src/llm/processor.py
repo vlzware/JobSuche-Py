@@ -55,7 +55,7 @@ class LLMProcessor:
             )
 
         if model is None:
-            model = config.get("llm.models.default", "google/gemini-2.5-flash")
+            model = config.get_required("llm.models.default")
 
         self.model = model
         self.session = session

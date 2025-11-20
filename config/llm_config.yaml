@@ -5,4 +5,4 @@ models:
   default: "google/gemini-2.5-flash"
 
 inference:
-  temperature: 0.1
+  temperature: 0.2

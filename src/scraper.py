@@ -354,7 +354,7 @@ def fetch_arbeitsagentur_details(
     url = f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}"
     domain = "www.arbeitsagentur.de"
 
-    headers = {"User-Agent": config_obj.get("scraper.headers.user_agent")}
+    headers = {"User-Agent": config_obj.get_required("scraper.headers.user_agent")}
 
     try:
         timeout = config_obj.get("api.timeouts.arbeitsagentur_details", 10)
@@ -596,7 +596,7 @@ def fetch_external_details(
         config_obj = config
 
     headers = {
-        "User-Agent": config_obj.get("scraper.headers.user_agent"),
+        "User-Agent": config_obj.get_required("scraper.headers.user_agent"),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
         "Accept-Encoding": "gzip, deflate",
