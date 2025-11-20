@@ -408,6 +408,38 @@ Examples:
 
     # Create or resume search session
     if args.session:
+        # Validate that session directory exists when resuming
+        session_base_dir = os.environ.get(
+            "JOBSUCHE_SEARCHES_DIR", config.get("paths.directories.searches", "data/searches")
+        )
+        session_dir_path = Path(session_base_dir) / args.session
+
+        if not session_dir_path.exists():
+            logger.error("=" * 80)
+            logger.error(f"Session directory not found: {session_dir_path}")
+            logger.error("=" * 80)
+            logger.error("")
+            logger.error("The specified session does not exist or has been deleted.")
+            logger.error("")
+            logger.error("Available sessions:")
+
+            # List available sessions
+            searches_dir = Path(session_base_dir)
+            if searches_dir.exists():
+                sessions = sorted([d.name for d in searches_dir.iterdir() if d.is_dir()])
+                if sessions:
+                    for s in sessions[-5:]:  # Show last 5 sessions
+                        logger.error(f"  - {s}")
+                else:
+                    logger.error("  (no sessions found)")
+            else:
+                logger.error("  (searches directory does not exist)")
+
+            logger.error("")
+            logger.error("To start a new session, omit the --session parameter.")
+            logger.error("=" * 80)
+            sys.exit(1)
+
         session = SearchSession(timestamp=args.session, verbose=verbose)
         logger.info(f"Resuming session: {args.session}")
     else:

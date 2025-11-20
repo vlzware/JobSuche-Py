@@ -169,9 +169,6 @@ class BaseWorkflow(ABC):
                     print("\n✓ Resuming from checkpoint:")
                     print(f"  - Already classified: {len(partial_results)} jobs")
                     print(f"  - Remaining to classify: {len(jobs_to_process)} jobs")
-                    print(
-                        f"  - Batch {checkpoint.get('current_batch', 0)}/{checkpoint.get('total_batches', 0)}"
-                    )
             else:
                 if self.verbose:
                     print(f"\nProcessing {len(jobs)} pre-loaded jobs...")

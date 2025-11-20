@@ -339,11 +339,15 @@ def classify_jobs_batch(
     # Determine the appropriate fallback category for this workflow
     fallback_category = get_fallback_category(categories)
 
+    # Calculate total batches for progress tracking
+    num_batches = (len(jobs) + batch_size - 1) // batch_size
+
     # Process in batches
     for batch_start in range(0, len(jobs), batch_size):
         batch = jobs[batch_start : batch_start + batch_size]
+        batch_num = batch_start // batch_size + 1
 
-        logger.info(f"Processing batch {batch_start // batch_size + 1} ({len(batch)} jobs)")
+        logger.info(f"Processing batch {batch_num}/{num_batches} ({len(batch)} jobs)")
 
         # Build prompt with multiple jobs using ID-based markdown format
         categories_str = ", ".join(f'"{cat}"' for cat in categories)
@@ -466,10 +470,36 @@ Return ONLY the lines with job IDs and categories, nothing else.
                 job_copy["categories"] = batch_results[idx]
                 classified_jobs.append(job_copy)
 
+            # Save checkpoint after each successful batch
+            if session:
+                session.save_partial_results(classified_jobs[-len(batch) :])
+
+                # Calculate completed and pending refnrs
+                # IMPORTANT: Include ALL completed jobs (previous runs + current run)
+                all_completed_jobs = session.load_partial_results()
+                completed_refnrs = [job.get("refnr", "") for job in all_completed_jobs]
+                pending_jobs = jobs[batch_start + batch_size :]
+                pending_refnrs = [job.get("refnr", "") for job in pending_jobs]
+
+                session.save_checkpoint(
+                    completed_refnrs=completed_refnrs,
+                    pending_refnrs=pending_refnrs,
+                    current_batch=batch_num,
+                    total_batches=num_batches,
+                )
+                logger.info(
+                    f"✓ Checkpoint saved ({len(classified_jobs)}/{len(jobs)} jobs complete)"
+                )
+
         except Exception as e:
             # Re-raise exception instead of masking with "Andere"
             logger.error(f"  Error in batch: {e}")
             raise
+
+    # Delete checkpoint after successful completion
+    if session:
+        session.delete_checkpoint()
+        logger.info("✓ Classification complete - checkpoint cleaned up")
 
     return classified_jobs
 
@@ -562,7 +592,9 @@ def classify_jobs_mega_batch(
                 session.save_partial_results(batch_classified)
 
                 # Calculate completed and pending refnrs
-                completed_refnrs = [job.get("refnr", "") for job in classified_jobs]
+                # IMPORTANT: Include ALL completed jobs (previous runs + current run)
+                all_completed_jobs = session.load_partial_results()
+                completed_refnrs = [job.get("refnr", "") for job in all_completed_jobs]
                 pending_jobs = jobs[(i + max_jobs_per_batch) :]
                 pending_refnrs = [job.get("refnr", "") for job in pending_jobs]
 
