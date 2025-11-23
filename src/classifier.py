@@ -423,30 +423,55 @@ def classify_jobs_batch(
 
     max_chars_mega = config_obj.get_required("processing.limits.job_text_mega_batch")
 
-    # Build batch prompt with ALL jobs using ID-based markdown format
+    # Build ID mapping: simple sequential IDs -> actual refnrs
+    # This makes the prompt cleaner and more reliable for the LLM
+    id_to_refnr = {}
+    for idx, job in enumerate(jobs):
+        simple_id = f"{idx+1:03d}"
+        actual_refnr = job.get("refnr", f"JOB_{idx:03d}")
+        id_to_refnr[simple_id] = actual_refnr
+
+    # Build batch prompt with ALL jobs using simple ID format
     jobs_text = ""
 
     for idx, job in enumerate(jobs):
-        job_id = job.get("refnr", f"JOB_{idx:03d}")
+        simple_id = f"{idx+1:03d}"
+        actual_refnr = job.get("refnr", f"JOB_{idx:03d}")
         text = job.get("text", "")
         original_len = len(text)
 
         # Fail on truncation - no silent errors!
         if original_len > max_chars_mega:
             logger.error(
-                f"❌ Job [{job_id}] would be truncated: {original_len:,} → {max_chars_mega:,} chars"
+                f"❌ Job [{actual_refnr}] would be truncated: {original_len:,} → {max_chars_mega:,} chars"
             )
             raise TruncationError(
-                job_id=str(job_id), original_length=original_len, truncated_length=max_chars_mega
+                job_id=str(actual_refnr),
+                original_length=original_len,
+                truncated_length=max_chars_mega,
             )
 
-        jobs_text += f"\n[{job_id}]\n{text}\n"
+        jobs_text += f"\n[{simple_id}]\n{text}\n"
 
     prompt = f"""Classify these {len(jobs)} German job descriptions into categories.
 
-Categories: {categories_str}
+OUTPUT FORMAT (CRITICAL - Read this first!):
+Return ONE LINE per job in this EXACT format:
+[001] - Excellent Match
+[002] - Good Match
+[003] - {fallback_category}
+
+Use ONLY these categories: {categories_str}
+Each job must be assigned to exactly ONE category.
+If none of the specific categories apply, use "{fallback_category}".
 {guidance}
-Each job should be assigned to exactly ONE category. If none of the specific categories apply, use "{fallback_category}".
+
+EVALUATION CHECKLIST (Apply to each job):
+✓ Do core requirements match the candidate's PRIMARY specialization?
+✓ Are required technologies CENTRAL to candidate's expertise (not just mentioned)?
+✓ Does the seniority level align?
+✓ Does the domain/industry match the background?
+✓ When in doubt between Good Match and Poor Match, choose Poor Match
 
 ============================================================
 JOB LISTINGS TO CLASSIFY
@@ -456,12 +481,9 @@ JOB LISTINGS TO CLASSIFY
 END OF JOB LISTINGS
 ============================================================
 
-IMPORTANT: Return ONE LINE per job in this exact format:
-[10001-1001417329-S] → Excellent Match
-[10002-1001234567-S] → Good Match
-[10003-1001987654-S] → {fallback_category}
-
-Return ONLY the lines with job reference IDs and categories, nothing else.
+REMEMBER: Return format - [001] - Category Name
+IMPORTANT: Be STRICT. Most jobs should be "{fallback_category}".
+Return ONLY the lines with job IDs and categories, nothing else.
 """
 
     try:
@@ -494,31 +516,32 @@ Return ONLY the lines with job reference IDs and categories, nothing else.
             batch_metadata=batch_metadata,
         )
 
-        # Parse markdown-based results line by line
-        # Build refnr to index mapping for this batch
-        refnr_to_idx = {job.get("refnr", f"JOB_{i:03d}"): i for i, job in enumerate(jobs)}
-
+        # Parse results line by line using simple ID format
         batch_results = {}
         for line in content.split("\n"):
             line = line.strip()
             if not line:
                 continue
 
-            # Match pattern: [refnr] → Category
-            match = re.match(r"\[([^\]]+)\]\s*(?:→|->)\s*(.+)", line)
+            # Match pattern: [001] - Category
+            # Accept dash (-) as separator (no more unicode arrows)
+            match = re.match(r"\[(\d{3})\]\s*-\s*(.+)", line)
             if match:
-                job_ref = match.group(1).strip()
+                simple_id = match.group(1).strip()
                 cats_str = match.group(2).strip()
                 cats = [c.strip() for c in cats_str.split(",")]
+
                 # Validate categories
                 valid_cats = [cat for cat in cats if cat in categories]
                 invalid_cats = [cat for cat in cats if cat not in categories]
 
                 # Fail on invalid categories - no silent errors!
                 if invalid_cats:
+                    # Map simple ID to actual refnr for error reporting
+                    actual_refnr = id_to_refnr.get(simple_id, simple_id)
                     error_msg = (
                         f"CRITICAL ERROR: LLM returned invalid categories in batch!\n"
-                        f"  Job ref: [{job_ref}]\n"
+                        f"  Job ID: [{simple_id}] (refnr: {actual_refnr})\n"
                         f"  Expected categories: {categories}\n"
                         f"  LLM returned: {cats}\n"
                         f"  Invalid categories: {invalid_cats}\n"
@@ -532,9 +555,9 @@ Return ONLY the lines with job reference IDs and categories, nothing else.
                         actual_count=len(cats),
                     )
 
-                # Map refnr back to batch index
-                if job_ref in refnr_to_idx:
-                    job_idx = refnr_to_idx[job_ref]
+                # Convert simple ID to batch index (001 -> 0, 002 -> 1, etc.)
+                job_idx = int(simple_id) - 1
+                if 0 <= job_idx < len(jobs):
                     batch_results[job_idx] = valid_cats
 
         # Check if we got results for all jobs
