@@ -477,6 +477,24 @@ class SearchSession:
 
         return str(file_path)
 
+    def save_failed_jobs_html(self, failed_jobs: list[dict]):
+        """
+        Save HTML export of failed scraping attempts
+
+        Args:
+            failed_jobs: List of jobs that failed to scrape with error info
+
+        Returns:
+            Path to the saved HTML file
+        """
+        from .exporters import HTMLExporter
+
+        filename = "jobs_failed.html"
+        file_path = self.session_dir / filename
+
+        exporter = HTMLExporter()
+        return exporter.export_failed_jobs(failed_jobs, file_path)
+
     def save_html_export(self, jobs: list[dict]):
         """
         Save HTML export of jobs with interactive features

@@ -710,12 +710,13 @@ Examples:
         html_path = session.save_html_export(classified_jobs)
         logger.info(f"✓ HTML export saved to {html_path}")
 
-        # Save failed jobs CSV (if any failures)
+        # Save failed jobs CSV and HTML (if any failures)
         if failed_jobs:
             failed_csv_path = session.save_failed_jobs_csv(failed_jobs)
-            logger.warning(f"✗ Failed jobs saved to {failed_csv_path}")
+            failed_html_path = session.save_failed_jobs_html(failed_jobs)
+            logger.warning(f"✗ Failed jobs saved to {failed_html_path}")
             logger.warning(
-                f"  {len(failed_jobs)} job(s) could not be scraped (see CSV for details)"
+                f"  {len(failed_jobs)} job(s) could not be scraped (see HTML for details)"
             )
 
         # Determine mode for summary
