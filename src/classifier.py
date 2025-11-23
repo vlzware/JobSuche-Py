@@ -452,6 +452,9 @@ Each job should be assigned to exactly ONE category. If none of the specific cat
 JOB LISTINGS TO CLASSIFY
 ============================================================
 {jobs_text}
+============================================================
+END OF JOB LISTINGS
+============================================================
 
 IMPORTANT: Return ONE LINE per job in this exact format:
 [10001-1001417329-S] → Excellent Match
