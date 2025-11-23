@@ -198,8 +198,6 @@ Examples:
     default_model = config.get("llm.models.default", "google/gemini-2.5-flash")
     default_delay = config.get("api.delays.scraping", 1.0)
 
-    # Workflow is now always "matching" - parameter removed for simplicity
-
     # Search parameters
     parser.add_argument(
         "--was", type=str, required=False, help='Job title/description (e.g., "Softwareentwickler")'

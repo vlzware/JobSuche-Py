@@ -28,10 +28,8 @@ def get_fallback_category(categories: list[str]) -> str:
     """
     Determine the appropriate fallback category based on the categories list.
 
-    This ensures the LLM uses the correct fallback category for different workflows:
-    - Standard classification: "Andere" (Other)
-    - Perfect job/CV workflows: "Poor Match"
-    - Generic: Last category in the list
+    For CV/description matching workflow, returns "Poor Match" if available,
+    otherwise falls back to the last category in the list.
 
     Args:
         categories: List of category names to classify into
@@ -40,12 +38,10 @@ def get_fallback_category(categories: list[str]) -> str:
         The fallback category name to use when no other categories match
     """
     if not categories:
-        return "Andere"  # Default fallback
+        return "Poor Match"  # Default fallback
 
-    # Check for common fallback categories in order of preference
-    if "Andere" in categories:
-        return "Andere"
-    elif "Poor Match" in categories:
+    # For matching workflow, use "Poor Match" as fallback
+    if "Poor Match" in categories:
         return "Poor Match"
     else:
         # Use last category as fallback (convention)
@@ -167,14 +163,23 @@ Return format example: ["Java", "Agile Projektentwicklung"]
 
             # Validate that returned categories are in our list
             valid_categories = [cat for cat in matched_categories if cat in categories]
+            invalid_categories = [cat for cat in matched_categories if cat not in categories]
 
-            # If no valid categories, return fallback (legitimate case)
-            if not valid_categories:
-                logger.warning(
-                    f"LLM returned categories not in our list: {matched_categories}. "
-                    f"Using '{fallback_category}' as fallback."
+            # Fail on invalid categories - no silent errors!
+            if invalid_categories:
+                error_msg = (
+                    f"LLM returned invalid categories!\n"
+                    f"Expected categories: {categories}\n"
+                    f"LLM returned: {matched_categories}\n"
+                    f"Invalid categories: {invalid_categories}\n"
+                    f"This indicates the LLM failed to follow instructions."
                 )
-                return [fallback_category]
+                logger.error(error_msg)
+                raise LLMDataIntegrityError(
+                    error_msg,
+                    expected_count=len(categories),
+                    actual_count=len(matched_categories),
+                )
 
             return valid_categories
 
@@ -426,15 +431,27 @@ Return ONLY the lines with job IDs and categories, nothing else.
                     cats = [c.strip() for c in cats_str.split(",")]
                     # Validate categories
                     valid_cats = [cat for cat in cats if cat in categories]
+                    invalid_cats = [cat for cat in cats if cat not in categories]
 
-                    if not valid_cats:
-                        logger.warning(
-                            f"JOB_{job_idx:03d}: LLM returned invalid categories: {cats}. "
-                            f"Using '{fallback_category}' as fallback."
+                    # Fail on invalid categories - no silent errors!
+                    if invalid_cats:
+                        error_msg = (
+                            f"CRITICAL ERROR: LLM returned invalid categories in batch!\n"
+                            f"  Job index: JOB_{job_idx:03d}\n"
+                            f"  Expected categories: {categories}\n"
+                            f"  LLM returned: {cats}\n"
+                            f"  Invalid categories: {invalid_cats}\n"
+                            f"  This indicates the LLM failed to follow instructions.\n"
+                            f"  NO SILENT FAILURES - aborting batch to prevent data corruption!"
                         )
-                        batch_results[job_idx] = [fallback_category]
-                    else:
-                        batch_results[job_idx] = valid_cats
+                        logger.error(error_msg)
+                        raise LLMDataIntegrityError(
+                            error_msg,
+                            expected_count=len(categories),
+                            actual_count=len(cats),
+                        )
+
+                    batch_results[job_idx] = valid_cats
 
             # Check if we got results for all jobs
             missing_jobs = [i for i in range(len(batch)) if i not in batch_results]
@@ -702,15 +719,27 @@ Return ONLY the lines with job IDs and categories, nothing else.
                 cats = [c.strip() for c in cats_str.split(",")]
                 # Validate categories
                 valid_cats = [cat for cat in cats if cat in categories]
+                invalid_cats = [cat for cat in cats if cat not in categories]
 
-                if not valid_cats:
-                    logger.warning(
-                        f"JOB_{job_idx:03d}: LLM returned invalid categories: {cats}. "
-                        f"Using '{fallback_category}' as fallback."
+                # Fail on invalid categories - no silent errors!
+                if invalid_cats:
+                    error_msg = (
+                        f"CRITICAL ERROR: LLM returned invalid categories in MEGA-BATCH!\n"
+                        f"  Job index: JOB_{job_idx:03d}\n"
+                        f"  Expected categories: {categories}\n"
+                        f"  LLM returned: {cats}\n"
+                        f"  Invalid categories: {invalid_cats}\n"
+                        f"  This indicates the LLM failed to follow instructions.\n"
+                        f"  NO SILENT FAILURES - aborting mega-batch to prevent data corruption!"
                     )
-                    batch_results[job_idx] = [fallback_category]
-                else:
-                    batch_results[job_idx] = valid_cats
+                    logger.error(error_msg)
+                    raise LLMDataIntegrityError(
+                        error_msg,
+                        expected_count=len(categories),
+                        actual_count=len(cats),
+                    )
+
+                batch_results[job_idx] = valid_cats
 
         # Check if we got results for all jobs
         missing_jobs = [i for i in range(len(jobs)) if i not in batch_results]

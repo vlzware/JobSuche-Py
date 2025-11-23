@@ -53,7 +53,4 @@ prompts:
     5. Be honest and selective - quality over quantity
     6. When in doubt between Good and Poor, choose Poor
 
-  # You can add more custom prompts here
-  # Example:
-  # perfect_job_matching: |
-  #   Custom prompt for perfect job workflow...
+  # You can add more custom prompts here as needed
