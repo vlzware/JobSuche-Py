@@ -53,7 +53,7 @@ class MatchingWorkflow(BaseWorkflow):
             cv_content: Your CV content (skills, experience)
             perfect_job_description: Description of your ideal job
             return_only_matches: If True, return only Excellent/Good matches (default: True)
-            batch_size: Optional batch size (uses mega-batch if None)
+            batch_size: Max jobs per batch (None = use config default for large batches)
             extra_api_params: Additional API parameters (e.g., {"reasoning": {"effort": "high"}})
 
         Returns:

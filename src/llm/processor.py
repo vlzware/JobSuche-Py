@@ -8,7 +8,7 @@ for different classification strategies.
 import os
 from typing import TYPE_CHECKING, Optional
 
-from ..classifier import classify_jobs_batch, classify_jobs_mega_batch
+from ..classifier import classify_jobs_batch
 from ..config import config
 from ..logging_config import get_module_logger
 from ..prompts import (
@@ -28,8 +28,8 @@ class LLMProcessor:
     """
     Handles all LLM-based job classification
 
-    This class provides a unified interface for different classification
-    approaches (mega-batch, batch, custom prompts, etc.)
+    This class provides a unified interface for batch classification
+    with automatic splitting for large job sets
     """
 
     def __init__(
@@ -80,7 +80,7 @@ class LLMProcessor:
             jobs: List of jobs to classify
             categories: List of category names
             category_definitions: Optional category descriptions for better accuracy
-            batch_size: If specified, use batch mode instead of mega-batch
+            batch_size: Max jobs per batch (None = use config default for large batches)
             extra_api_params: Additional API parameters (e.g., reasoning effort)
 
         Returns:
@@ -89,34 +89,23 @@ class LLMProcessor:
         logger.info(f"Classifying jobs using {self.model}...")
         logger.info(f"  Categories: {', '.join(categories)}")
 
-        # Use mega-batch by default, or smaller batches if requested
+        # Use batch processing with automatic splitting
         if batch_size:
-            logger.info(f"  Mode: Batch processing ({batch_size} jobs per request)")
-
-            return classify_jobs_batch(
-                jobs=jobs,
-                categories=categories,
-                api_key=self.api_key,
-                model=self.model,
-                batch_size=batch_size,
-                verbose=self.verbose,
-                extra_api_params=extra_api_params,
-                session=self.session,
-                category_definitions=category_definitions,
-            )
+            logger.info(f"  Mode: Batch processing ({batch_size} jobs per batch)")
         else:
-            logger.info(f"  Mode: Mega-batch (all {len(jobs)} jobs in ONE request)")
+            logger.info("  Mode: Auto-batch (using config default, all jobs if possible)")
 
-            return classify_jobs_mega_batch(
-                jobs=jobs,
-                categories=categories,
-                api_key=self.api_key,
-                model=self.model,
-                verbose=self.verbose,
-                extra_api_params=extra_api_params,
-                session=self.session,
-                category_definitions=category_definitions,
-            )
+        return classify_jobs_batch(
+            jobs=jobs,
+            categories=categories,
+            api_key=self.api_key,
+            model=self.model,
+            batch_size=batch_size,
+            verbose=self.verbose,
+            extra_api_params=extra_api_params,
+            session=self.session,
+            category_definitions=category_definitions,
+        )
 
     def classify_matching(
         self,
@@ -145,7 +134,7 @@ class LLMProcessor:
             cv_content: Your CV content (optional)
             perfect_job_description: Description of your ideal job (optional)
             return_only_matches: If True, return only Excellent and Good matches (default: False)
-            batch_size: If specified, use batch mode instead of mega-batch
+            batch_size: Max jobs per batch (None = use config default for large batches)
             extra_api_params: Additional API parameters (e.g., {"reasoning": {"effort": "high"}})
 
         Returns:

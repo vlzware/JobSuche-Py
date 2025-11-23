@@ -298,7 +298,7 @@ def classify_jobs_batch(
     categories: list[str],
     api_key: str | None = None,
     model: str | None = None,
-    batch_size: int = 5,
+    batch_size: int | None = None,
     verbose: bool = True,
     extra_api_params: dict | None = None,
     session: Optional["SearchSession"] = None,
@@ -307,265 +307,17 @@ def classify_jobs_batch(
     config_obj: Config | None = None,
 ) -> list[dict]:
     """
-    Classify jobs in batches - sends multiple jobs per request
+    Classify jobs in batches with automatic splitting for large job sets
+
+    Processes jobs in batches, automatically splitting into multiple API calls
+    if needed. Supports checkpointing and resume for reliability.
 
     Args:
         jobs: List of jobs with 'text' field
         categories: List of category names (uses config if None, falls back to defaults)
         api_key: OpenRouter API key
         model: Model to use (defaults to value from llm_config.yaml)
-        batch_size: Number of jobs to classify per API call
-        verbose: Print progress
-        extra_api_params: Additional parameters (e.g., {"reasoning": {"effort": "high"}})
-        session: SearchSession to save LLM requests/responses
-        category_definitions: Optional dict of category -> description mappings
-                             (loaded from categories.yaml if None)
-        http_client: HTTP client for making requests (optional)
-        config_obj: Config object (optional, uses global config if None)
-
-    Returns:
-        List of jobs with added 'categories' field
-    """
-    if http_client is None:
-        http_client = default_http_client
-    if config_obj is None:
-        config_obj = config
-
-    if model is None:
-        model = config_obj.get_required("llm.models.default")
-
-    if api_key is None:
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
-            raise ValueError("OpenRouter API key required")
-
-    classified_jobs = []
-
-    # Determine the appropriate fallback category for this workflow
-    fallback_category = get_fallback_category(categories)
-
-    # Calculate total batches for progress tracking
-    num_batches = (len(jobs) + batch_size - 1) // batch_size
-
-    # Process in batches
-    for batch_start in range(0, len(jobs), batch_size):
-        batch = jobs[batch_start : batch_start + batch_size]
-        batch_num = batch_start // batch_size + 1
-
-        logger.info(f"Processing batch {batch_num}/{num_batches} ({len(batch)} jobs)")
-
-        # Build prompt with multiple jobs using ID-based markdown format
-        categories_str = ", ".join(f'"{cat}"' for cat in categories)
-        guidance = build_category_guidance(categories, category_definitions)
-
-        max_chars_batch = config_obj.get_required("processing.limits.job_text_batch")
-        jobs_text = ""
-
-        for idx, job in enumerate(batch):
-            job_id = job.get("refnr", f"JOB_{idx:03d}")
-            text = job.get("text", "")
-            original_len = len(text)
-
-            # Fail on truncation - no silent errors!
-            if original_len > max_chars_batch:
-                logger.error(
-                    f"❌ Job [{job_id}] would be truncated: "
-                    f"{original_len:,} → {max_chars_batch:,} chars"
-                )
-                raise TruncationError(
-                    job_id=str(job_id),
-                    original_length=original_len,
-                    truncated_length=max_chars_batch,
-                )
-
-            jobs_text += f"\n[{job_id}] {job.get('titel', 'N/A')}\n"
-            jobs_text += text + "\n"
-
-        prompt = f"""Classify these German job descriptions into categories: {categories_str}
-{guidance}
-Each job should be assigned to exactly ONE category. If none of the specific categories apply, use "{fallback_category}".
-
-============================================================
-JOB LISTINGS TO CLASSIFY
-============================================================
-{jobs_text}
-
-IMPORTANT: Return ONE LINE per job in this exact format:
-[10001-1001417329-S] → Excellent Match
-[10002-1001234567-S] → Good Match
-[10003-1001987654-S] → {fallback_category}
-
-Return ONLY the lines with job reference IDs and categories, nothing else.
-"""
-
-        try:
-            # Import locally to avoid circular dependency
-            from .llm.openrouter_client import OpenRouterClient
-
-            # Use unified OpenRouter client
-            client = OpenRouterClient(
-                api_key=api_key, http_client=http_client, config_obj=config_obj
-            )
-            batch_info = f"Batch {batch_start // batch_size + 1} (Model: {model})"
-
-            # Prepare batch metadata for thinking export
-            batch_metadata = [
-                {
-                    "refnr": job.get("refnr", f"JOB_{i:03d}"),
-                    "titel": job.get("titel", "N/A"),
-                    "ort": job.get("ort", "N/A"),
-                    "arbeitgeber": job.get("arbeitgeber", "N/A"),
-                }
-                for i, job in enumerate(batch)
-            ]
-
-            content, _full_response = client.complete(
-                prompt=prompt,
-                model=model,
-                temperature=config_obj.get_required("llm.inference.temperature"),
-                extra_params=extra_api_params,
-                timeout=config_obj.get("api.timeouts.batch_classification", 60),
-                session=session,
-                interaction_label=batch_info,
-                batch_metadata=batch_metadata,
-            )
-
-            # Parse markdown-based results line by line
-            # Build refnr to index mapping for this batch
-            refnr_to_idx = {job.get("refnr", f"JOB_{i:03d}"): i for i, job in enumerate(batch)}
-
-            batch_results = {}
-            for line in content.split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-
-                # Match pattern: [refnr] → Category
-                match = re.match(r"\[([^\]]+)\]\s*(?:→|->)\s*(.+)", line)
-                if match:
-                    job_ref = match.group(1).strip()
-                    cats_str = match.group(2).strip()
-                    cats = [c.strip() for c in cats_str.split(",")]
-                    # Validate categories
-                    valid_cats = [cat for cat in cats if cat in categories]
-                    invalid_cats = [cat for cat in cats if cat not in categories]
-
-                    # Fail on invalid categories - no silent errors!
-                    if invalid_cats:
-                        error_msg = (
-                            f"CRITICAL ERROR: LLM returned invalid categories in batch!\n"
-                            f"  Job ref: [{job_ref}]\n"
-                            f"  Expected categories: {categories}\n"
-                            f"  LLM returned: {cats}\n"
-                            f"  Invalid categories: {invalid_cats}\n"
-                            f"  This indicates the LLM failed to follow instructions.\n"
-                            f"  NO SILENT FAILURES - aborting batch to prevent data corruption!"
-                        )
-                        logger.error(error_msg)
-                        raise LLMDataIntegrityError(
-                            error_msg,
-                            expected_count=len(categories),
-                            actual_count=len(cats),
-                        )
-
-                    # Map refnr back to batch index
-                    if job_ref in refnr_to_idx:
-                        job_idx = refnr_to_idx[job_ref]
-                        batch_results[job_idx] = valid_cats
-
-            # Check if we got results for all jobs
-            missing_jobs = [i for i in range(len(batch)) if i not in batch_results]
-
-            if missing_jobs:
-                error_msg = (
-                    f"CRITICAL ERROR: LLM returned incomplete results!\n"
-                    f"  Expected {len(batch)} jobs, got {len(batch_results)} results.\n"
-                    f"  Missing job indices: {missing_jobs}\n"
-                    f"  This indicates either:\n"
-                    f"    1. LLM failed to process some jobs (potential queue scrambling!)\n"
-                    f"    2. Response parsing failed\n"
-                    f"    3. Context window exceeded\n"
-                    f"  NO SILENT FAILURES - aborting to prevent data corruption!"
-                )
-                logger.error(error_msg)
-                raise LLMDataIntegrityError(
-                    error_msg,
-                    expected_count=len(batch),
-                    actual_count=len(batch_results),
-                    missing_indices=missing_jobs,
-                )
-
-            # Assign results to jobs
-            for idx, job in enumerate(batch):
-                job_copy = job.copy()
-                # Direct access - should never fail due to missing_jobs check above
-                if idx not in batch_results:
-                    raise AssertionError(
-                        f"FATAL: Job index {idx} missing from batch_results despite passing "
-                        f"missing_jobs check! This should never happen."
-                    )
-                job_copy["categories"] = batch_results[idx]
-                classified_jobs.append(job_copy)
-
-            # Save checkpoint after each successful batch
-            if session:
-                session.save_partial_results(classified_jobs[-len(batch) :])
-
-                # Calculate completed and pending refnrs
-                # IMPORTANT: Include ALL completed jobs (previous runs + current run)
-                all_completed_jobs = session.load_partial_results()
-                completed_refnrs = [job.get("refnr", "") for job in all_completed_jobs]
-                pending_jobs = jobs[batch_start + batch_size :]
-                pending_refnrs = [job.get("refnr", "") for job in pending_jobs]
-
-                session.save_checkpoint(
-                    completed_refnrs=completed_refnrs,
-                    pending_refnrs=pending_refnrs,
-                    current_batch=batch_num,
-                    total_batches=num_batches,
-                )
-                logger.info(
-                    f"✓ Checkpoint saved ({len(classified_jobs)}/{len(jobs)} jobs complete)"
-                )
-
-        except Exception as e:
-            # Re-raise exception instead of masking with "Andere"
-            logger.error(f"  Error in batch: {e}")
-            raise
-
-    # Delete checkpoint after successful completion
-    if session:
-        session.delete_checkpoint()
-        logger.info("✓ Classification complete - checkpoint cleaned up")
-
-    return classified_jobs
-
-
-def classify_jobs_mega_batch(
-    jobs: list[dict],
-    categories: list[str],
-    api_key: str | None = None,
-    model: str | None = None,
-    verbose: bool = True,
-    extra_api_params: dict | None = None,
-    session: Optional["SearchSession"] = None,
-    category_definitions: dict[str, str] | None = None,
-    http_client: HttpClient | None = None,
-    config_obj: Config | None = None,
-) -> list[dict]:
-    """
-    Classify ALL jobs in ONE request (uses large context models)
-
-    This is the most efficient approach for 100+ jobs:
-    - Single API call regardless of job count
-    - Lowest cost per job
-    - Fastest total time
-
-    Args:
-        jobs: List of jobs with 'text' field
-        categories: List of category names (uses config if None, falls back to defaults)
-        api_key: OpenRouter API key
-        model: Model to use (defaults to value from llm_config.yaml)
+        batch_size: Max jobs per batch (None = use config default for large batches)
         verbose: Print progress
         extra_api_params: Additional parameters for the API request (e.g., {"reasoning": {"effort": "high"}})
         session: SearchSession to save LLM requests/responses
@@ -590,14 +342,17 @@ def classify_jobs_mega_batch(
         if not api_key:
             raise ValueError("OpenRouter API key required")
 
-    # Check if we need to split into multiple mega-batches to avoid context overflow
-    max_jobs_per_batch = config_obj.get_required("processing.limits.max_jobs_per_mega_batch")
+    # Determine batch size: use provided value or get from config
+    if batch_size is None:
+        max_jobs_per_batch = config_obj.get_required("processing.limits.max_jobs_per_mega_batch")
+    else:
+        max_jobs_per_batch = batch_size
 
     if len(jobs) > max_jobs_per_batch:
-        # Split into multiple mega-batches
+        # Split into multiple batches
         num_batches = (len(jobs) + max_jobs_per_batch - 1) // max_jobs_per_batch
 
-        logger.info(f"Splitting {len(jobs)} jobs into {num_batches} mega-batches...")
+        logger.info(f"Splitting {len(jobs)} jobs into {num_batches} batches...")
         logger.info(f"  (~{max_jobs_per_batch} jobs per batch for safe context usage)")
 
         classified_jobs = []
@@ -606,15 +361,16 @@ def classify_jobs_mega_batch(
             batch_num = (i // max_jobs_per_batch) + 1
 
             logger.info(f"{'=' * 60}")
-            logger.info(f"Mega-batch {batch_num}/{num_batches}: {len(batch)} jobs")
+            logger.info(f"Batch {batch_num}/{num_batches}: {len(batch)} jobs")
             logger.info(f"{'=' * 60}")
 
             # Recursively call for each sub-batch (will not recurse again since batch <= max)
-            batch_classified = classify_jobs_mega_batch(
+            batch_classified = classify_jobs_batch(
                 jobs=batch,
                 categories=categories,
                 api_key=api_key,
                 model=model,
+                batch_size=max_jobs_per_batch,
                 verbose=verbose,
                 extra_api_params=extra_api_params,
                 session=session,
@@ -624,7 +380,7 @@ def classify_jobs_mega_batch(
             )
             classified_jobs.extend(batch_classified)
 
-            # Save checkpoint after each successful mega-batch
+            # Save checkpoint after each successful batch
             if session:
                 session.save_partial_results(batch_classified)
 
@@ -646,9 +402,7 @@ def classify_jobs_mega_batch(
                 )
 
         logger.info(f"{'=' * 60}")
-        logger.info(
-            f"✓ Completed all {num_batches} mega-batches ({len(classified_jobs)} jobs total)"
-        )
+        logger.info(f"✓ Completed all {num_batches} batches ({len(classified_jobs)} jobs total)")
         logger.info(f"{'=' * 60}")
 
         # Delete checkpoint after successful completion
@@ -658,8 +412,8 @@ def classify_jobs_mega_batch(
 
         return classified_jobs
 
-    # Single mega-batch (jobs <= max_jobs_per_batch)
-    logger.info(f"Classifying {len(jobs)} jobs in ONE mega-batch request...")
+    # Single batch (jobs <= max_jobs_per_batch)
+    logger.info(f"Classifying {len(jobs)} jobs in ONE batch request...")
 
     # Determine the appropriate fallback category for this workflow
     fallback_category = get_fallback_category(categories)
@@ -669,12 +423,11 @@ def classify_jobs_mega_batch(
 
     max_chars_mega = config_obj.get_required("processing.limits.job_text_mega_batch")
 
-    # Build mega-batch prompt with ALL jobs using ID-based markdown format
+    # Build batch prompt with ALL jobs using ID-based markdown format
     jobs_text = ""
 
     for idx, job in enumerate(jobs):
         job_id = job.get("refnr", f"JOB_{idx:03d}")
-        title = job.get("titel", "N/A")
         text = job.get("text", "")
         original_len = len(text)
 
@@ -687,7 +440,7 @@ def classify_jobs_mega_batch(
                 job_id=str(job_id), original_length=original_len, truncated_length=max_chars_mega
             )
 
-        jobs_text += f"\n[{job_id}] {title}\n{text}\n"
+        jobs_text += f"\n[{job_id}]\n{text}\n"
 
     prompt = f"""Classify these {len(jobs)} German job descriptions into categories.
 
@@ -714,7 +467,7 @@ Return ONLY the lines with job reference IDs and categories, nothing else.
 
         # Use unified OpenRouter client
         client = OpenRouterClient(api_key=api_key, http_client=http_client, config_obj=config_obj)
-        batch_info = f"MEGA-BATCH ({len(jobs)} jobs, Model: {model})"
+        batch_info = f"Batch ({len(jobs)} jobs, Model: {model})"
 
         # Prepare batch metadata for thinking export
         batch_metadata = [
@@ -739,7 +492,7 @@ Return ONLY the lines with job reference IDs and categories, nothing else.
         )
 
         # Parse markdown-based results line by line
-        # Build refnr to index mapping for this mega-batch
+        # Build refnr to index mapping for this batch
         refnr_to_idx = {job.get("refnr", f"JOB_{i:03d}"): i for i, job in enumerate(jobs)}
 
         batch_results = {}
@@ -761,13 +514,13 @@ Return ONLY the lines with job reference IDs and categories, nothing else.
                 # Fail on invalid categories - no silent errors!
                 if invalid_cats:
                     error_msg = (
-                        f"CRITICAL ERROR: LLM returned invalid categories in MEGA-BATCH!\n"
+                        f"CRITICAL ERROR: LLM returned invalid categories in batch!\n"
                         f"  Job ref: [{job_ref}]\n"
                         f"  Expected categories: {categories}\n"
                         f"  LLM returned: {cats}\n"
                         f"  Invalid categories: {invalid_cats}\n"
                         f"  This indicates the LLM failed to follow instructions.\n"
-                        f"  NO SILENT FAILURES - aborting mega-batch to prevent data corruption!"
+                        f"  NO SILENT FAILURES - aborting batch to prevent data corruption!"
                     )
                     logger.error(error_msg)
                     raise LLMDataIntegrityError(
@@ -786,12 +539,12 @@ Return ONLY the lines with job reference IDs and categories, nothing else.
 
         if missing_jobs:
             error_msg = (
-                f"CRITICAL ERROR: MEGA-BATCH returned incomplete results!\n"
+                f"CRITICAL ERROR: Batch returned incomplete results!\n"
                 f"  Expected {len(jobs)} jobs, got {len(batch_results)} results.\n"
                 f"  Missing job indices: {missing_jobs}\n"
                 f"  This is a CATASTROPHIC failure - jobs may be misaligned!\n"
                 f"  Possible causes:\n"
-                f"    1. Context window exceeded (reduce max_jobs_per_mega_batch)\n"
+                f"    1. Context window exceeded (reduce batch_size)\n"
                 f"    2. LLM failed to process some jobs\n"
                 f"    3. Response parsing error\n"
                 f"  NO SILENT FAILURES - aborting to prevent data corruption!"

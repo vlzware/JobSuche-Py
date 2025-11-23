@@ -259,7 +259,7 @@ Examples:
         "--batch-size",
         type=int,
         default=None,
-        help="Use smaller batches instead of mega-batch (e.g., --batch-size 5). Default: mega-batch",
+        help="Max jobs per batch (e.g., --batch-size 5 for small batches). Default: auto (uses config)",
     )
     parser.add_argument(
         "--reasoning-effort",
