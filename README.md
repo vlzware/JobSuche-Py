@@ -19,8 +19,10 @@ _example output with matching workflow (fictional data)_
 - **Personalized Matching** — Find jobs matching your skills and preferences
 - **Incremental Updates** — Smart caching avoids redundant API calls
 - **AI Classification** — Rate jobs as Excellent, Good, or Poor matches
-- **Flexible Models** — Choose from cheap/fast to smart/expensive
-- **Rich Exports** — JSON, CSV, and text reports with application links
+- **Interactive HTML Exports** — Browse jobs in your browser with sortable tables and direct application links
+- **LLM Reasoning Viewer** — See why each job was rated (thinking process with cross-references)
+- **Flexible Models** — Choose from cheap/fast to smart/expensive with optional reasoning depth control
+- **Rich Exports** — HTML, JSON, CSV, and text reports
 - **Resume from Failures** — Automatic checkpoint recovery
 - **Customizable** — Adjust matching criteria via custom prompts
 
@@ -54,9 +56,11 @@ export OPENROUTER_API_KEY='your-key-here'
 
 (or use the available script to export into the current session: ```source setup_key.sh```)
 
-### 3. Create Your CV (Optional)
+### 3. Create Your CV and/or Dream-Job Description
 
-Create a simple markdown file `cv.md` with your experience, skills, and background.
+Create a markdown file `cv.md` with your experience, skills, and background.
+
+Create a text file `perfect_job.txt` with your ideal job description.
 
 ### 4. Run
 
@@ -144,20 +148,22 @@ Fine-tune strictness, emphasize criteria (remote work, company size), or add dom
 **Default:** `google/gemini-2.5-flash` (fast, cheap)
 
 ```bash
---model "google/gemini-2.5-pro"        # Better quality, more expensive
---model "google/gemini-2.5-flash-lite" # Cheapest, fastest
---model "x-ai/grok-4.1-fast"          # Fast with reasoning support
+--model "google/gemini-2.5-pro"        # Better quality, more expensive, reasoning support
+--model "google/gemini-2.5-flash-lite" # Cheapest, fastest, reasoning support
+--model "x-ai/grok-4.1-fast"          # New, fast, with reasoning support
 ```
 
-**Reasoning Support:** Some models (e.g., Grok, Gemini Pro) support enhanced reasoning:
+**Reasoning Effort:**
+
+All example models support thinking/reasoning. Use `--reasoning-effort` to control depth:
 
 ```bash
---reasoning-effort high    # Enable detailed reasoning (slower, better quality)
+--reasoning-effort high    # Detailed reasoning (slower, better quality)
 --reasoning-effort medium  # Balanced reasoning
 --reasoning-effort low     # Minimal reasoning (faster)
 ```
 
-**Typical costs** (100-200 jobs): < $0.03 with Flash, < $0.10 with Pro.
+**Typical costs** (100-200 jobs): < \$0.03 with Flash, < \$0.10 with Pro.
 
 See [OpenRouter](https://openrouter.ai/) for pricing and models.
 
@@ -169,12 +175,20 @@ Each search creates a timestamped directory:
 
 ```
 data/searches/YYYYMMDD_HHMMSS/
-├── SUMMARY.txt            # Human-readable summary
-├── jobs_classified.json   # Complete data with classifications
-├── jobs_all.csv          # Successfully scraped jobs
-├── jobs_failed.csv       # Failed scrapes with error types
-└── debug/                # Logs and raw data
+├── SUMMARY.txt               # Human-readable summary
+├── jobs_classified.json      # Complete data with classifications
+├── jobs_all.csv              # Successfully scraped jobs (spreadsheet)
+├── jobs_all.html             # Interactive browser view with sortable tables
+├── jobs_failed.csv           # Failed scrapes with error types
+├── jobs_failed.html          # Failed scrapes (browser view for manual checking)
+└── debug/                    # Logs and LLM reasoning
+    ├── session.log           # Complete execution log
+    ├── *_thinking.md         # LLM reasoning (markdown)
+    ├── *_thinking.html       # LLM reasoning (HTML with clickable job links)
+    └── thinking_index.html   # Searchable index of all thinking logs
 ```
+
+**Tip:** Open `jobs_all.html` in your browser for the best viewing experience. The thinking HTMLs show the LLM's reasoning for each classification.
 
 ---
 

@@ -97,7 +97,7 @@ pytest --cov=src
   - **API Range:** 0-100 days
   - **Web UI Limit:** 28 days (4 weeks) at https://www.arbeitsagentur.de/jobsuche/
   - **Note:** The API supports a wider range than the web interface
-- `wo` (location): Optional - omitting searches all of Germany
+- `wo` (location): Optional - omitting searches all available (Germany, Austria, ...). Set "Deutschland (Land)" for Germany
 
 ---
 
@@ -205,9 +205,25 @@ jobsuche-py/
    - Database unchanged (still has original scraped data)
 
 **Session Metadata:**
-- `session_info_MA.json` — Workflow type, search parameters, job counts
-- `debug/*_thinking.md` — LLM reasoning (if model supports it)
+- `SUMMARY.txt` — Human-readable summary with session info, statistics, and file index
 - `debug/session.log` — Complete execution log
+- `debug/*_thinking.md` — LLM reasoning in markdown (all example models support thinking)
+- `debug/*_thinking.html` — LLM reasoning in HTML with clickable job links and metadata
+- `debug/thinking_index.html` — Searchable index mapping jobs to their batch thinking logs
+
+**Thinking Extraction:**
+All example models (Gemini Flash/Pro, Grok) support thinking/reasoning extraction. The system captures the LLM's reasoning process and exports it in both markdown and HTML formats. HTML exports include:
+- Clickable job references (links to job details in JSON)
+- Batch metadata (job titles, employers, locations)
+- Cross-referenced thinking logs via searchable index
+
+**LLM Prompt Design (Hybrid Approach):**
+The classification system uses a hybrid approach for job identification:
+1. **Internal tracking:** Maps simple sequential IDs (001, 002, etc.) to actual `refnr` values
+2. **LLM prompts:** Uses simple IDs to reduce confusion and improve success rates
+3. **Response parsing:** Converts simple IDs back to `refnr` for database operations
+
+This evolved from: simple → refnr-based (for HTML tracking) → hybrid (best of both)
 
 ### LLM Error Handling
 
