@@ -14,6 +14,7 @@ from ..logging_config import get_module_logger
 from ..prompts import (
     CV_CLASSIFICATION_CRITERIA,
     CV_PROFILE_TEMPLATE,
+    PERFECT_JOB_TEMPLATE,
     load_custom_prompts,
 )
 
@@ -188,7 +189,10 @@ class LLMProcessor:
             logger.info(f"  CV provided: {cv_length:,} characters")
 
         if has_perfect_job:
-            guidance_parts.append(f"IDEAL JOB CRITERIA:\n{perfect_job_description}")
+            perfect_job_guidance = PERFECT_JOB_TEMPLATE.format(
+                perfect_job_description=perfect_job_description
+            )
+            guidance_parts.append(perfect_job_guidance)
             pj_length = len(perfect_job_description) if perfect_job_description else 0
             logger.info(f"  Perfect job description provided: {pj_length:,} characters")
 

@@ -9,6 +9,7 @@ from .templates import (
     CV_CLASSIFICATION_CRITERIA,
     CV_MATCHING_TEMPLATE,
     CV_PROFILE_TEMPLATE,
+    PERFECT_JOB_TEMPLATE,
     get_cv_matching_prompt,
     load_custom_prompts,
 )
@@ -17,6 +18,7 @@ __all__ = [
     "CV_CLASSIFICATION_CRITERIA",
     "CV_MATCHING_TEMPLATE",
     "CV_PROFILE_TEMPLATE",
+    "PERFECT_JOB_TEMPLATE",
     "get_cv_matching_prompt",
     "load_custom_prompts",
 ]

@@ -29,6 +29,16 @@ END OF CANDIDATE PROFILE
 ============================================================
 """
 
+# Perfect job description template (shown once in prompt)
+PERFECT_JOB_TEMPLATE = """============================================================
+IDEAL JOB DESCRIPTION
+============================================================
+{perfect_job_description}
+============================================================
+END OF IDEAL JOB DESCRIPTION
+============================================================
+"""
+
 # Classification criteria (used in category definitions, shown once via build_category_guidance)
 CV_CLASSIFICATION_CRITERIA = """Match jobs against the candidate's CV using these criteria (be realistic - expect most jobs to be Poor Match):
 

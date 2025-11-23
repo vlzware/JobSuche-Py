@@ -385,6 +385,9 @@ def classify_jobs_batch(
 {guidance}
 Each job should be assigned to exactly ONE category. If none of the specific categories apply, use "{fallback_category}".
 
+============================================================
+JOB LISTINGS TO CLASSIFY
+============================================================
 {jobs_text}
 
 IMPORTANT: Return ONE LINE per job in this exact format:
@@ -692,6 +695,9 @@ Categories: {categories_str}
 {guidance}
 Each job should be assigned to exactly ONE category. If none of the specific categories apply, use "{fallback_category}".
 
+============================================================
+JOB LISTINGS TO CLASSIFY
+============================================================
 {jobs_text}
 
 IMPORTANT: Return ONE LINE per job in this exact format:
