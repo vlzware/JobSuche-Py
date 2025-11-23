@@ -704,8 +704,16 @@ Examples:
         csv_path = session.save_csv_export(classified_jobs)
         logger.info(f"✓ CSV export saved to {csv_path}")
 
+        # Prepare search params for metadata
+        metadata_search_params = {
+            "was": args.was if not args.from_database else None,
+            "wo": args.wo if not args.from_database else None,
+        }
+
         # Save HTML export
-        html_path = session.save_html_export(classified_jobs)
+        html_path = session.save_html_export(
+            classified_jobs, model=args.model, search_params=metadata_search_params
+        )
         logger.info(f"✓ HTML export saved to {html_path}")
 
         # Save failed jobs CSV and HTML (if any failures)
@@ -726,6 +734,9 @@ Examples:
             profile_info["cv_length"] = len(cv_content)
         if args.perfect_job_description:
             profile_info["perfect_job_length"] = len(args.perfect_job_description)
+
+        # Generate thinking index (if thinking logs were created)
+        session.generate_thinking_index(classified_jobs=classified_jobs)
 
         # Save session summary
         summary_path = session.save_session_summary(

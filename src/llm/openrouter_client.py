@@ -58,6 +58,7 @@ class OpenRouterClient:
         timeout: int = 60,
         session: Optional["SearchSession"] = None,
         interaction_label: str = "",
+        batch_metadata: list[dict] | None = None,
     ) -> tuple[str, dict]:
         """
         Make a completion request to OpenRouter
@@ -71,6 +72,8 @@ class OpenRouterClient:
             timeout: Request timeout in seconds
             session: Optional SearchSession for saving request/response
             interaction_label: Label for this interaction (e.g., "Batch 1/3", "Brainstorm")
+            batch_metadata: Optional list of job metadata dicts for HTML export
+                           (e.g., [{"refnr": "...", "titel": "...", "ort": "...", "arbeitgeber": "..."}])
 
         Returns:
             tuple of (content_string, full_response_dict)
@@ -127,6 +130,7 @@ class OpenRouterClient:
                 content=content,
                 full_response=full_response,
                 label=interaction_label,
+                batch_metadata=batch_metadata,
             )
 
         return content, full_response

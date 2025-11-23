@@ -362,19 +362,18 @@ def classify_jobs_batch(
         jobs_text = ""
 
         for idx, job in enumerate(batch):
-            job_id = f"JOB_{idx:03d}"
+            job_id = job.get("refnr", f"JOB_{idx:03d}")
             text = job.get("text", "")
             original_len = len(text)
 
             # Fail on truncation - no silent errors!
             if original_len > max_chars_batch:
-                ref_nr = job.get("refnr", "N/A")
                 logger.error(
-                    f"❌ Job [{ref_nr}] would be truncated: "
+                    f"❌ Job [{job_id}] would be truncated: "
                     f"{original_len:,} → {max_chars_batch:,} chars"
                 )
                 raise TruncationError(
-                    job_id=str(ref_nr),
+                    job_id=str(job_id),
                     original_length=original_len,
                     truncated_length=max_chars_batch,
                 )
@@ -384,16 +383,16 @@ def classify_jobs_batch(
 
         prompt = f"""Classify these German job descriptions into categories: {categories_str}
 {guidance}
-Jobs can belong to multiple categories. If none apply, use "{fallback_category}".
+Each job should be assigned to exactly ONE category. If none of the specific categories apply, use "{fallback_category}".
 
 {jobs_text}
 
 IMPORTANT: Return ONE LINE per job in this exact format:
-[JOB_000] → Category1, Category2
-[JOB_001] → Category1
-[JOB_002] → {fallback_category}
+[10001-1001417329-S] → Excellent Match
+[10002-1001234567-S] → Good Match
+[10003-1001987654-S] → {fallback_category}
 
-Return ONLY the lines with job IDs and categories, nothing else.
+Return ONLY the lines with job reference IDs and categories, nothing else.
 """
 
         try:
@@ -406,6 +405,17 @@ Return ONLY the lines with job IDs and categories, nothing else.
             )
             batch_info = f"Batch {batch_start // batch_size + 1} (Model: {model})"
 
+            # Prepare batch metadata for thinking export
+            batch_metadata = [
+                {
+                    "refnr": job.get("refnr", f"JOB_{i:03d}"),
+                    "titel": job.get("titel", "N/A"),
+                    "ort": job.get("ort", "N/A"),
+                    "arbeitgeber": job.get("arbeitgeber", "N/A"),
+                }
+                for i, job in enumerate(batch)
+            ]
+
             content, _full_response = client.complete(
                 prompt=prompt,
                 model=model,
@@ -414,19 +424,23 @@ Return ONLY the lines with job IDs and categories, nothing else.
                 timeout=config_obj.get("api.timeouts.batch_classification", 60),
                 session=session,
                 interaction_label=batch_info,
+                batch_metadata=batch_metadata,
             )
 
             # Parse markdown-based results line by line
+            # Build refnr to index mapping for this batch
+            refnr_to_idx = {job.get("refnr", f"JOB_{i:03d}"): i for i, job in enumerate(batch)}
+
             batch_results = {}
             for line in content.split("\n"):
                 line = line.strip()
                 if not line:
                     continue
 
-                # Match pattern: [JOB_XXX] → Category1, Category2
-                match = re.match(r"\[JOB_(\d+)\]\s*(?:→|->)\s*(.+)", line)
+                # Match pattern: [refnr] → Category
+                match = re.match(r"\[([^\]]+)\]\s*(?:→|->)\s*(.+)", line)
                 if match:
-                    job_idx = int(match.group(1))
+                    job_ref = match.group(1).strip()
                     cats_str = match.group(2).strip()
                     cats = [c.strip() for c in cats_str.split(",")]
                     # Validate categories
@@ -437,7 +451,7 @@ Return ONLY the lines with job IDs and categories, nothing else.
                     if invalid_cats:
                         error_msg = (
                             f"CRITICAL ERROR: LLM returned invalid categories in batch!\n"
-                            f"  Job index: JOB_{job_idx:03d}\n"
+                            f"  Job ref: [{job_ref}]\n"
                             f"  Expected categories: {categories}\n"
                             f"  LLM returned: {cats}\n"
                             f"  Invalid categories: {invalid_cats}\n"
@@ -451,7 +465,10 @@ Return ONLY the lines with job IDs and categories, nothing else.
                             actual_count=len(cats),
                         )
 
-                    batch_results[job_idx] = valid_cats
+                    # Map refnr back to batch index
+                    if job_ref in refnr_to_idx:
+                        job_idx = refnr_to_idx[job_ref]
+                        batch_results[job_idx] = valid_cats
 
             # Check if we got results for all jobs
             missing_jobs = [i for i in range(len(batch)) if i not in batch_results]
@@ -653,19 +670,18 @@ def classify_jobs_mega_batch(
     jobs_text = ""
 
     for idx, job in enumerate(jobs):
-        job_id = f"JOB_{idx:03d}"
+        job_id = job.get("refnr", f"JOB_{idx:03d}")
         title = job.get("titel", "N/A")
         text = job.get("text", "")
         original_len = len(text)
 
         # Fail on truncation - no silent errors!
         if original_len > max_chars_mega:
-            ref_nr = job.get("refnr", "N/A")
             logger.error(
-                f"❌ Job [{ref_nr}] would be truncated: {original_len:,} → {max_chars_mega:,} chars"
+                f"❌ Job [{job_id}] would be truncated: {original_len:,} → {max_chars_mega:,} chars"
             )
             raise TruncationError(
-                job_id=str(ref_nr), original_length=original_len, truncated_length=max_chars_mega
+                job_id=str(job_id), original_length=original_len, truncated_length=max_chars_mega
             )
 
         jobs_text += f"\n[{job_id}] {title}\n{text}\n"
@@ -674,16 +690,16 @@ def classify_jobs_mega_batch(
 
 Categories: {categories_str}
 {guidance}
-Jobs can belong to multiple categories. If none of the specific categories apply, use "{fallback_category}".
+Each job should be assigned to exactly ONE category. If none of the specific categories apply, use "{fallback_category}".
 
 {jobs_text}
 
 IMPORTANT: Return ONE LINE per job in this exact format:
-[JOB_000] → Category1, Category2
-[JOB_001] → Category1
-[JOB_002] → {fallback_category}
+[10001-1001417329-S] → Excellent Match
+[10002-1001234567-S] → Good Match
+[10003-1001987654-S] → {fallback_category}
 
-Return ONLY the lines with job IDs and categories, nothing else.
+Return ONLY the lines with job reference IDs and categories, nothing else.
 """
 
     try:
@@ -694,6 +710,17 @@ Return ONLY the lines with job IDs and categories, nothing else.
         client = OpenRouterClient(api_key=api_key, http_client=http_client, config_obj=config_obj)
         batch_info = f"MEGA-BATCH ({len(jobs)} jobs, Model: {model})"
 
+        # Prepare batch metadata for thinking export
+        batch_metadata = [
+            {
+                "refnr": job.get("refnr", f"JOB_{i:03d}"),
+                "titel": job.get("titel", "N/A"),
+                "ort": job.get("ort", "N/A"),
+                "arbeitgeber": job.get("arbeitgeber", "N/A"),
+            }
+            for i, job in enumerate(jobs)
+        ]
+
         content, full_response = client.complete(
             prompt=prompt,
             model=model,
@@ -702,19 +729,23 @@ Return ONLY the lines with job IDs and categories, nothing else.
             timeout=config_obj.get("api.timeouts.mega_batch_classification", 120),
             session=session,
             interaction_label=batch_info,
+            batch_metadata=batch_metadata,
         )
 
         # Parse markdown-based results line by line
+        # Build refnr to index mapping for this mega-batch
+        refnr_to_idx = {job.get("refnr", f"JOB_{i:03d}"): i for i, job in enumerate(jobs)}
+
         batch_results = {}
         for line in content.split("\n"):
             line = line.strip()
             if not line:
                 continue
 
-            # Match pattern: [JOB_XXX] → Category1, Category2
-            match = re.match(r"\[JOB_(\d+)\]\s*(?:→|->)\s*(.+)", line)
+            # Match pattern: [refnr] → Category
+            match = re.match(r"\[([^\]]+)\]\s*(?:→|->)\s*(.+)", line)
             if match:
-                job_idx = int(match.group(1))
+                job_ref = match.group(1).strip()
                 cats_str = match.group(2).strip()
                 cats = [c.strip() for c in cats_str.split(",")]
                 # Validate categories
@@ -725,7 +756,7 @@ Return ONLY the lines with job IDs and categories, nothing else.
                 if invalid_cats:
                     error_msg = (
                         f"CRITICAL ERROR: LLM returned invalid categories in MEGA-BATCH!\n"
-                        f"  Job index: JOB_{job_idx:03d}\n"
+                        f"  Job ref: [{job_ref}]\n"
                         f"  Expected categories: {categories}\n"
                         f"  LLM returned: {cats}\n"
                         f"  Invalid categories: {invalid_cats}\n"
@@ -739,7 +770,10 @@ Return ONLY the lines with job IDs and categories, nothing else.
                         actual_count=len(cats),
                     )
 
-                batch_results[job_idx] = valid_cats
+                # Map refnr back to batch index
+                if job_ref in refnr_to_idx:
+                    job_idx = refnr_to_idx[job_ref]
+                    batch_results[job_idx] = valid_cats
 
         # Check if we got results for all jobs
         missing_jobs = [i for i in range(len(jobs)) if i not in batch_results]

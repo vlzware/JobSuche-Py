@@ -20,6 +20,13 @@ from .html_templates import (
     FAILED_JOBS_SCRIPT,
     FAILED_JOBS_SECTION,
 )
+from .html_utils import (
+    CATEGORY_EXCELLENT,
+    CATEGORY_GOOD,
+    CATEGORY_POOR,
+    get_category_css_class,
+    sanitize_css_class,
+)
 
 
 class HTMLExporter:
@@ -61,7 +68,7 @@ class HTMLExporter:
         # Build sections for each error type
         sections = []
         for error_type, jobs in error_groups:
-            error_class = error_type.lower().replace("_", "").replace(" ", "")
+            error_class = sanitize_css_class(error_type)
 
             # Build job cards for this section
             job_cards = []
@@ -69,6 +76,7 @@ class HTMLExporter:
                 job_cards.append(
                     FAILED_JOBS_CARD.format(
                         url=escape(job.get("url", "")),
+                        refnr=escape(job.get("refnr", "N/A")),
                         title=escape(job.get("titel", "N/A")),
                         location=escape(job.get("ort", "N/A")),
                         employer=escape(job.get("arbeitgeber", "N/A")),
@@ -93,57 +101,98 @@ class HTMLExporter:
             javascript=FAILED_JOBS_SCRIPT,
         )
 
-    def export(self, jobs: list[dict], output_path: Path) -> str:
+    def export(self, jobs: list[dict], output_path: Path, metadata: dict | None = None) -> str:
         """
         Export jobs to an interactive HTML file
 
         Args:
             jobs: List of classified jobs
             output_path: Path where HTML file should be saved
+            metadata: Optional metadata dict (session_id, timestamp, model, search_params)
 
         Returns:
             Path to the saved HTML file
         """
         # Group jobs by category
         category_groups: dict[str, list[dict]] = {
-            "Excellent Match": [],
-            "Good Match": [],
-            "Poor Match": [],
+            CATEGORY_EXCELLENT: [],
+            CATEGORY_GOOD: [],
+            CATEGORY_POOR: [],
         }
         for job in jobs:
             categories = job.get("categories", [])
-            if "Excellent Match" in categories:
-                category_groups["Excellent Match"].append(job)
-            elif "Good Match" in categories:
-                category_groups["Good Match"].append(job)
-            elif "Poor Match" in categories:
-                category_groups["Poor Match"].append(job)
+            if CATEGORY_EXCELLENT in categories:
+                category_groups[CATEGORY_EXCELLENT].append(job)
+            elif CATEGORY_GOOD in categories:
+                category_groups[CATEGORY_GOOD].append(job)
+            elif CATEGORY_POOR in categories:
+                category_groups[CATEGORY_POOR].append(job)
 
-        html_content = self._generate_html(jobs, category_groups)
+        html_content = self._generate_html(jobs, category_groups, metadata)
 
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(html_content)
 
         return str(output_path)
 
-    def _generate_html(self, jobs: list[dict], category_groups: dict) -> str:
+    def _generate_html(
+        self, jobs: list[dict], category_groups: dict, metadata: dict | None = None
+    ) -> str:
         """Generate the full HTML content"""
         # Build stats
         stats = []
         for category, cat_jobs in category_groups.items():
             if cat_jobs:
-                css_class = category.lower().replace(" ", "")
+                css_class = get_category_css_class(category)
                 stats.append(
                     CLASSIFIED_JOBS_STAT.format(
                         css_class=css_class, category=category, count=len(cat_jobs)
                     )
                 )
 
+        # Build metadata
+        metadata_html = ""
+        if metadata:
+            metadata_items = []
+            if metadata.get("session_id"):
+                metadata_items.append(
+                    f'<span class="metadata-item">'
+                    f'<span class="metadata-label">Session:</span> {escape(metadata["session_id"])}'
+                    f"</span>"
+                )
+            if metadata.get("timestamp"):
+                metadata_items.append(
+                    f'<span class="metadata-item">'
+                    f'<span class="metadata-label">Generated:</span> {escape(metadata["timestamp"])}'
+                    f"</span>"
+                )
+            if metadata.get("model"):
+                metadata_items.append(
+                    f'<span class="metadata-item">'
+                    f'<span class="metadata-label">Model:</span> {escape(metadata["model"])}'
+                    f"</span>"
+                )
+            if metadata.get("search_params"):
+                search_params = metadata["search_params"]
+                if search_params.get("was"):
+                    metadata_items.append(
+                        f'<span class="metadata-item">'
+                        f'<span class="metadata-label">Search:</span> {escape(search_params["was"])}'
+                        f"</span>"
+                    )
+                if search_params.get("wo"):
+                    metadata_items.append(
+                        f'<span class="metadata-item">'
+                        f'<span class="metadata-label">Location:</span> {escape(search_params["wo"])}'
+                        f"</span>"
+                    )
+            metadata_html = "".join(metadata_items)
+
         # Build filter buttons
         filter_buttons = []
         for category, cat_jobs in category_groups.items():
             if cat_jobs:
-                css_class = category.lower().replace(" ", "")
+                css_class = get_category_css_class(category)
                 filter_buttons.append(
                     CLASSIFIED_JOBS_FILTER_BUTTON.format(
                         css_class=css_class, category=category, count=len(cat_jobs)
@@ -156,7 +205,7 @@ class HTMLExporter:
             if not cat_jobs:
                 continue
 
-            css_class = category.lower().replace(" ", "")
+            css_class = get_category_css_class(category)
 
             # Build job cards for this section
             job_cards = []
@@ -164,6 +213,7 @@ class HTMLExporter:
                 job_cards.append(
                     CLASSIFIED_JOBS_CARD.format(
                         url=escape(job.get("url", "")),
+                        refnr=escape(job.get("refnr", "N/A")),
                         title=escape(job.get("titel", "N/A")),
                         location=escape(job.get("ort", "N/A")),
                         employer=escape(job.get("arbeitgeber", "N/A")),
@@ -183,7 +233,7 @@ class HTMLExporter:
         # Assemble final document
         return CLASSIFIED_JOBS_DOCUMENT.format(
             css=CLASSIFIED_JOBS_STYLES,
-            header=CLASSIFIED_JOBS_HEADER.format(stats="".join(stats)),
+            header=CLASSIFIED_JOBS_HEADER.format(stats="".join(stats), metadata=metadata_html),
             controls=CLASSIFIED_JOBS_CONTROLS.format(
                 total_jobs=len(jobs), filter_buttons="".join(filter_buttons)
             ),

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import config
+from .html_utils import get_category_css_class
 from .logging_config import setup_session_logging
 
 
@@ -64,6 +65,9 @@ class SearchSession:
 
         # Setup logging
         self.logger = setup_session_logging(session_dir=self.session_dir, verbose=verbose)
+
+        # Track all batch metadata for thinking index generation
+        self.batch_metadata_tracker: list[dict] = []
 
         self.logger.info(f"Initialized session: {timestamp}")
 
@@ -130,7 +134,14 @@ class SearchSession:
             f.write(response)
             f.write("\n")
 
-    def save_llm_interaction(self, prompt: str, content: str, full_response: dict, label: str = ""):
+    def save_llm_interaction(
+        self,
+        prompt: str,
+        content: str,
+        full_response: dict,
+        label: str = "",
+        batch_metadata: list[dict] | None = None,
+    ):
         """
         Save a complete LLM interaction with full API response
 
@@ -143,6 +154,8 @@ class SearchSession:
             content: The extracted text content from LLM response
             full_response: Complete API response dict (includes usage, metadata, etc.)
             label: Optional label for this interaction (e.g., "Batch 1", "Brainstorm")
+            batch_metadata: Optional list of job metadata dicts for HTML export and index
+                           [{"refnr": "...", "titel": "...", "ort": "...", "arbeitgeber": "..."}]
         """
         # Determine filename based on label or use counter
         if label:
@@ -179,9 +192,32 @@ class SearchSession:
         # Extract and save thinking process (if available)
         thinking = self._extract_thinking_process(full_response)
         if thinking:
+            # Save as markdown
             thinking_file = self.debug_dir / f"{base_name}_thinking.md"
             with open(thinking_file, "w", encoding="utf-8") as f:
                 f.write(thinking)
+
+            # Save as HTML with clickable refnrs
+            from .thinking_html_exporter import ThinkingHTMLExporter
+
+            html_exporter = ThinkingHTMLExporter()
+            html_file = self.debug_dir / f"{base_name}_thinking.html"
+            html_exporter.export_thinking(
+                thinking_markdown=thinking,
+                output_path=html_file,
+                batch_metadata=batch_metadata,
+                batch_label=label,
+            )
+
+            # Track batch metadata for index generation
+            if batch_metadata:
+                self.batch_metadata_tracker.append(
+                    {
+                        "label": label,
+                        "base_name": base_name,
+                        "jobs": batch_metadata,
+                    }
+                )
 
     def _extract_thinking_process(self, full_response: dict) -> str | None:
         """
@@ -390,11 +426,13 @@ class SearchSession:
         lines.append("=" * 68)
         lines.append("FILES")
         lines.append("=" * 68)
-        lines.append("jobs_classified.json  - Full data with classifications")
-        lines.append("jobs_all.csv          - Spreadsheet view (sorted by category)")
-        lines.append("jobs_all.html         - Interactive browser view with links")
-        lines.append("debug/session.log     - Complete execution log")
-        lines.append("debug/*_thinking.md   - LLM reasoning (if available)")
+        lines.append("jobs_classified.json      - Full data with classifications")
+        lines.append("jobs_all.csv              - Spreadsheet view (sorted by category)")
+        lines.append("jobs_all.html             - Interactive browser view with links")
+        lines.append("debug/session.log         - Complete execution log")
+        lines.append("debug/*_thinking.md       - LLM reasoning (markdown)")
+        lines.append("debug/*_thinking.html     - LLM reasoning (HTML with clickable links)")
+        lines.append("debug/thinking_index.html - Searchable index of all thinking logs")
         lines.append("")
         lines.append("Cost details: https://openrouter.ai/activity")
         lines.append("=" * 68)
@@ -495,23 +533,41 @@ class SearchSession:
         exporter = HTMLExporter()
         return exporter.export_failed_jobs(failed_jobs, file_path)
 
-    def save_html_export(self, jobs: list[dict]):
+    def save_html_export(
+        self, jobs: list[dict], model: str | None = None, search_params: dict | None = None
+    ):
         """
         Save HTML export of jobs with interactive features
 
         Args:
             jobs: List of classified jobs
+            model: Optional model name used for classification
+            search_params: Optional dict with was, wo, etc.
 
         Returns:
             Path to the saved HTML file
         """
+        from datetime import datetime
+
         from .exporters import HTMLExporter
 
         filename = config.get("paths.files.output.html_export", "jobs_all.html")
         file_path = self.session_dir / filename
 
+        # Build metadata
+        metadata: dict[str, Any] = {
+            "session_id": self.timestamp,
+            "timestamp": datetime.strptime(self.timestamp, "%Y%m%d_%H%M%S").strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+        }
+        if model:
+            metadata["model"] = model
+        if search_params:
+            metadata["search_params"] = search_params
+
         exporter = HTMLExporter()
-        return exporter.export(jobs, file_path)
+        return exporter.export(jobs, file_path, metadata=metadata)
 
     def get_summary(self) -> str:
         """Get a summary of the session directory structure"""
@@ -632,3 +688,112 @@ Structure:
 
         if partial_file.exists():
             partial_file.unlink()
+
+    def generate_thinking_index(self, classified_jobs: list[dict] | None = None):
+        """
+        Generate an HTML index page for all thinking logs with search functionality
+
+        This creates a searchable index that maps each job to its batch thinking log.
+        Should be called after all batches are processed.
+
+        Args:
+            classified_jobs: Optional list of classified jobs with categories
+                           (used to show classification results in the index)
+        """
+        if not self.batch_metadata_tracker:
+            # No thinking logs to index
+            return
+
+        # Build a mapping of refnr to category if classified_jobs provided
+        refnr_to_category = {}
+        if classified_jobs:
+            for job in classified_jobs:
+                refnr = job.get("refnr", "")
+                categories = job.get("categories", [])
+                if refnr and categories:
+                    refnr_to_category[refnr] = ", ".join(categories)
+
+        # Build the index HTML
+        index_html = self._generate_thinking_index_html(refnr_to_category)
+
+        # Save to file
+        index_file = self.debug_dir / "thinking_index.html"
+        with open(index_file, "w", encoding="utf-8") as f:
+            f.write(index_html)
+
+        self.logger.info(f"Generated thinking index: {index_file}")
+
+    def _generate_thinking_index_html(self, refnr_to_category: dict[str, str]) -> str:
+        """Generate the HTML content for the thinking index page"""
+        from html import escape
+
+        from .html_styles import THINKING_INDEX_STYLES
+        from .html_templates import (
+            THINKING_INDEX_BATCH_SECTION,
+            THINKING_INDEX_CATEGORY_BADGE,
+            THINKING_INDEX_DOCUMENT,
+            THINKING_INDEX_JOB_ROW,
+            THINKING_INDEX_SCRIPT,
+        )
+
+        # Build job entries grouped by batch
+        batch_sections = []
+
+        for batch_info in self.batch_metadata_tracker:
+            label = batch_info["label"]
+            base_name = batch_info["base_name"]
+            jobs = batch_info["jobs"]
+
+            # Build job list for this batch
+            job_rows = []
+            for job in jobs:
+                refnr = job.get("refnr", "N/A")
+                titel = job.get("titel", "N/A")
+                ort = job.get("ort", "N/A")
+                arbeitgeber = job.get("arbeitgeber", "N/A")
+                category = refnr_to_category.get(refnr, "")
+
+                # Build the category badge
+                category_badge = ""
+                if category:
+                    category_class = get_category_css_class(category)
+                    category_badge = THINKING_INDEX_CATEGORY_BADGE.format(
+                        category_class=category_class,
+                        category=escape(category),
+                    )
+
+                job_detail_base = config.get_required("api.arbeitsagentur.job_detail_url")
+                arbeitsagentur_url = f"{job_detail_base}/{refnr}"
+                thinking_link = f"{base_name}_thinking.html#job-{refnr}"
+
+                job_rows.append(
+                    THINKING_INDEX_JOB_ROW.format(
+                        refnr=escape(refnr),
+                        titel=escape(titel),
+                        ort=escape(ort),
+                        arbeitgeber=escape(arbeitgeber),
+                        category=escape(category),
+                        arbeitsagentur_url=arbeitsagentur_url,
+                        category_badge=category_badge,
+                        thinking_link=thinking_link,
+                    )
+                )
+
+            batch_sections.append(
+                THINKING_INDEX_BATCH_SECTION.format(
+                    batch_label=escape(label),
+                    job_count=len(jobs),
+                    job_rows="".join(job_rows),
+                )
+            )
+
+        # Calculate total jobs
+        total_jobs = sum(len(b["jobs"]) for b in self.batch_metadata_tracker)
+
+        # Build complete HTML document using template
+        return THINKING_INDEX_DOCUMENT.format(
+            css=THINKING_INDEX_STYLES,
+            total_jobs=total_jobs,
+            batch_sections="".join(batch_sections),
+            javascript=THINKING_INDEX_SCRIPT,
+        )

@@ -351,7 +351,8 @@ def fetch_arbeitsagentur_details(
     if config_obj is None:
         config_obj = config
 
-    url = f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}"
+    job_detail_base = config_obj.get_required("api.arbeitsagentur.job_detail_url")
+    url = f"{job_detail_base}/{refnr}"
     domain = "www.arbeitsagentur.de"
 
     headers = {"User-Agent": config_obj.get_required("scraper.headers.user_agent")}
@@ -835,7 +836,8 @@ def extract_descriptions(detailed_jobs: list[dict]) -> tuple[list[dict], list[di
             # Failed scrape - extract minimal info for tracking
             job_url = details.get("url", job.get("externeUrl", ""))
             if not job_url and job.get("refnr"):
-                job_url = f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{job.get('refnr')}"
+                job_detail_base = config.get_required("api.arbeitsagentur.job_detail_url")
+                job_url = f"{job_detail_base}/{job.get('refnr')}"
 
             # Determine error type
             warning = details.get("warning", "UNKNOWN")

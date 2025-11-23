@@ -3,6 +3,7 @@
 
 arbeitsagentur:
   base_url: "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+  job_detail_url: "https://www.arbeitsagentur.de/jobsuche/jobdetail"
   headers:
     user_agent: "Jobsuche/2.9.2 (de.arbeitsagentur.jobboerse; build:1077; iOS 15.1.0) Alamofire/5.4.4"
     host: "rest.arbeitsagentur.de"
