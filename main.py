@@ -244,7 +244,7 @@ Examples:
         "--model",
         type=str,
         default=default_model,
-        help=f"OpenRouter model to use (default: {default_model})",
+        help=f"OpenRouter model to use. Examples: google/gemini-2.5-flash, x-ai/grok-4.1-fast (default: {default_model})",
     )
     parser.add_argument(
         "--temperature",
@@ -485,6 +485,12 @@ Examples:
 
     logger.info(f"Return only matches: {not args.return_all}")
 
+    # Build extra API parameters for reasoning (if provided)
+    extra_api_params = None
+    if args.reasoning_effort:
+        extra_api_params = {"reasoning": {"effort": args.reasoning_effort}}
+        logger.info(f"Using reasoning effort: {args.reasoning_effort}")
+
     # FROM-DATABASE MODE: Load all jobs from database and classify with new criteria
     if args.from_database:
         from src.data.job_database import JobDatabase
@@ -543,6 +549,7 @@ Examples:
                 perfect_job_description=args.perfect_job_description,
                 return_only_matches=not args.return_all,
                 batch_size=args.batch_size,
+                extra_api_params=extra_api_params,
             )
 
         except (
@@ -616,6 +623,7 @@ Examples:
                     batch_size=args.batch_size,
                     veroeffentlichtseit=args.veroeffentlichtseit,
                     include_weiterbildung=args.include_weiterbildung,
+                    extra_api_params=extra_api_params,
                 )
                 completed_workflow = matching_workflow  # For later reference to gathering_stats
 

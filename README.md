@@ -146,6 +146,15 @@ Fine-tune strictness, emphasize criteria (remote work, company size), or add dom
 ```bash
 --model "google/gemini-2.5-pro"        # Better quality, more expensive
 --model "google/gemini-2.5-flash-lite" # Cheapest, fastest
+--model "x-ai/grok-4.1-fast"          # Fast with reasoning support
+```
+
+**Reasoning Support:** Some models (e.g., Grok, Gemini Pro) support enhanced reasoning:
+
+```bash
+--reasoning-effort high    # Enable detailed reasoning (slower, better quality)
+--reasoning-effort medium  # Balanced reasoning
+--reasoning-effort low     # Minimal reasoning (faster)
 ```
 
 **Typical costs** (100-200 jobs): < $0.03 with Flash, < $0.10 with Pro.

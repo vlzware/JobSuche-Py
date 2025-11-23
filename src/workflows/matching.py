@@ -43,6 +43,7 @@ class MatchingWorkflow(BaseWorkflow):
         perfect_job_description: str | None = None,
         return_only_matches: bool = True,
         batch_size: int | None = None,
+        extra_api_params: dict | None = None,
     ) -> list[dict]:
         """
         Process jobs using profile-based matching
@@ -53,6 +54,7 @@ class MatchingWorkflow(BaseWorkflow):
             perfect_job_description: Description of your ideal job
             return_only_matches: If True, return only Excellent/Good matches (default: True)
             batch_size: Optional batch size (uses mega-batch if None)
+            extra_api_params: Additional API parameters (e.g., {"reasoning": {"effort": "high"}})
 
         Returns:
             List of jobs with match classification (filtered if return_only_matches=True)
@@ -77,4 +79,5 @@ class MatchingWorkflow(BaseWorkflow):
             perfect_job_description=perfect_job_description if has_perfect_job else None,
             return_only_matches=return_only_matches,
             batch_size=batch_size,
+            extra_api_params=extra_api_params,
         )

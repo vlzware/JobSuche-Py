@@ -124,6 +124,7 @@ class LLMProcessor:
         perfect_job_description: str | None = None,
         return_only_matches: bool = False,
         batch_size: int | None = None,
+        extra_api_params: dict | None = None,
     ) -> list[dict]:
         """
         Classify jobs based on match to your profile (CV and/or perfect job description)
@@ -144,6 +145,7 @@ class LLMProcessor:
             perfect_job_description: Description of your ideal job (optional)
             return_only_matches: If True, return only Excellent and Good matches (default: False)
             batch_size: If specified, use batch mode instead of mega-batch
+            extra_api_params: Additional API parameters (e.g., {"reasoning": {"effort": "high"}})
 
         Returns:
             List of jobs with 'categories' field (filtered if return_only_matches=True)
@@ -206,6 +208,7 @@ class LLMProcessor:
             categories=categories,
             category_definitions=category_definitions,
             batch_size=batch_size,
+            extra_api_params=extra_api_params,
         )
 
         # Filter to only good matches if requested

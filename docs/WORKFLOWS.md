@@ -102,6 +102,8 @@ python main.py --was "Python Developer" --wo "Berlin" --cv cv.md
 **Try different model:**
 ```bash
 python main.py --from-database --cv cv.md --model "google/gemini-2.5-pro"
+# Or with reasoning support:
+python main.py --from-database --cv cv.md --model "x-ai/grok-4.1-fast" --reasoning-effort high
 ```
 
 **Updated CV:**

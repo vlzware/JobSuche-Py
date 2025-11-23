@@ -205,6 +205,8 @@ def test_models(api_key: str, timeout: int = 15, verbose: bool = False) -> dict[
         # OpenAI models
         ("openai/gpt-3.5-turbo", "OpenAI GPT-3.5 Turbo", "cheap"),
         ("openai/gpt-4o-mini", "OpenAI GPT-4o Mini", "capable"),
+        # xAI models
+        ("x-ai/grok-4.1-fast", "xAI Grok 4.1 Fast (supports reasoning)", "fast"),
         # Meta models
         ("meta-llama/llama-3.1-8b-instruct", "Meta Llama 3.1 8B", "cheap"),
     ]
