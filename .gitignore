@@ -4,6 +4,8 @@ __pycache__/
 *.pyo
 venv/
 env/
+.mypy_cache/
+htmlcov/
 
 # IDE
 .idea/

@@ -109,20 +109,23 @@ jobsuche-py/
 │   ├── data/              # Data gathering and caching
 │   │   ├── gatherer.py       # Job data orchestration
 │   │   └── job_database.py   # Persistent job caching
-│   ├── preferences/       # User profiles
-│   │   └── user_profile.py   # CV loading
 │   ├── llm/               # LLM processing
-│   │   ├── processor.py
-│   │   └── openrouter_client.py
+│   │   ├── processor.py      # Classification orchestration
+│   │   └── openrouter_client.py  # OpenRouter API client
+│   ├── prompts/           # Prompt templates
+│   │   └── templates.py      # CV matching, perfect job templates
 │   ├── workflows/         # Matching workflow
-│   │   ├── base.py
-│   │   └── matching.py
+│   │   ├── base.py           # Abstract base workflow
+│   │   └── matching.py       # Personalized job matching
 │   ├── api_client.py      # Arbeitsagentur API
 │   ├── scraper.py         # Web scraping
-│   ├── classifier.py      # Classification logic
-│   ├── analyzer.py        # Statistics
+│   ├── classifier.py      # Batch LLM classification
+│   ├── analyzer.py        # Statistics and reporting
+│   ├── exporters.py       # HTML export
 │   ├── session.py         # Session management
-│   └── session_merger.py  # Session merging & deduplication
+│   ├── exceptions.py      # Custom exception hierarchy
+│   └── http_client.py     # HTTP client abstraction (DI)
+├── config/                # YAML configuration files
 ├── tests/                 # Error scenario tests
 ├── prompts.example.yaml   # Example prompt templates
 ├── main.py               # CLI entry point

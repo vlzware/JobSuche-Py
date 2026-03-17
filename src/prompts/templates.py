@@ -74,9 +74,6 @@ Evaluation principles:
 5. Be honest and selective - quality over quantity
 6. When in doubt between Good and Poor, choose Poor"""
 
-# Legacy template (kept for backward compatibility)
-CV_MATCHING_TEMPLATE = CV_PROFILE_TEMPLATE + "\n" + CV_CLASSIFICATION_CRITERIA
-
 
 def load_custom_prompts(config_path: str | None = None) -> dict[str, str]:
     """
@@ -133,18 +130,3 @@ def load_custom_prompts(config_path: str | None = None) -> dict[str, str]:
     except Exception as e:
         print(f"Warning: Could not load custom prompts from {config_path}: {e}")
         return {}
-
-
-def get_cv_matching_prompt(cv_content: str, custom_template: str | None = None) -> str:
-    """
-    Get the CV matching prompt with CV content inserted.
-
-    Args:
-        cv_content: The candidate's CV content
-        custom_template: Optional custom template (uses default if None)
-
-    Returns:
-        Complete prompt with CV content inserted
-    """
-    template = custom_template or CV_MATCHING_TEMPLATE
-    return template.format(cv_content=cv_content)

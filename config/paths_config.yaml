@@ -5,7 +5,6 @@ directories:
   searches: "data/searches"
 
 files:
-  categories: "categories.yaml"
   prompts: "prompts.yaml"
   debug:
     raw_api_response: "01_raw_api_response.json"

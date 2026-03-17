@@ -3,16 +3,13 @@ Job description classifier using OpenRouter LLM API
 Automatically categorizes job listings into predefined categories
 """
 
-import json
 import os
 import re
 from typing import TYPE_CHECKING, Optional
 
 from .config import Config, config
 from .exceptions import (
-    EmptyJobContentError,
     LLMDataIntegrityError,
-    LLMResponseError,
     TruncationError,
 )
 from .http_client import HttpClient, default_http_client
@@ -75,224 +72,6 @@ def build_category_guidance(
     return "\n\n" + "\n\n".join(guidance_parts)
 
 
-def classify_job_description(
-    job_text: str,
-    categories: list[str],
-    api_key: str,
-    model: str | None = None,
-    category_definitions: dict[str, str] | None = None,
-    http_client: HttpClient | None = None,
-    config_obj: Config | None = None,
-) -> list[str]:
-    """
-    Classify a single job description into one or more categories using OpenRouter
-
-    Args:
-        job_text: The job description text to classify
-        categories: List of category names to classify into
-        api_key: OpenRouter API key
-        model: Model to use (defaults to value from llm_config.yaml)
-        category_definitions: Optional dict of category -> description mappings
-        http_client: HTTP client for making requests (optional)
-        config_obj: Config object (optional, uses global config if None)
-
-    Returns:
-        List of matching categories
-    """
-    if http_client is None:
-        http_client = default_http_client
-    if config_obj is None:
-        config_obj = config
-
-    if model is None:
-        model = config_obj.get_required("llm.models.default")
-
-    # Determine the appropriate fallback category for this workflow
-    fallback_category = get_fallback_category(categories)
-
-    # Create the prompt for classification
-    categories_str = ", ".join(f'"{cat}"' for cat in categories)
-    guidance = build_category_guidance(categories, category_definitions)
-
-    max_chars = config_obj.get_required("processing.limits.job_text_single_job")
-
-    prompt = f"""Analyze the following German job description and identify which of these categories apply:
-{categories_str}
-{guidance}
-A job can belong to multiple categories. Return ONLY a JSON array of the matching categories.
-If none of the specific categories apply, return ["{fallback_category}"].
-
-Job Description:
-{job_text[:max_chars]}
-
-Return format example: ["Java", "Agile Projektentwicklung"]
-"""
-
-    try:
-        # Import locally to avoid circular dependency
-        from .llm.openrouter_client import OpenRouterClient
-
-        # Use unified OpenRouter client
-        client = OpenRouterClient(api_key=api_key, http_client=http_client, config_obj=config_obj)
-        content, _full_response = client.complete(
-            prompt=prompt,
-            model=model,
-            temperature=config_obj.get_required("llm.inference.temperature"),
-            timeout=config_obj.get("api.timeouts.classification", 30),
-            session=None,  # Single job classification doesn't use session
-        )
-
-        # Parse the JSON response - strict parsing, no silent fallbacks
-        try:
-            # Try to extract JSON array from the response
-            # Some models might add explanation text, so we need to be flexible
-            start_idx = content.find("[")
-            end_idx = content.rfind("]") + 1
-
-            if start_idx == -1 or end_idx <= start_idx:
-                error_msg = (
-                    f"LLM response missing JSON array brackets!\n"
-                    f'Expected format: ["Category1", "Category2"]\n'
-                    f"Got: {content[:200]}"
-                )
-                logger.error(error_msg)
-                raise LLMResponseError(error_msg, raw_response=content)
-
-            json_str = content[start_idx:end_idx]
-            matched_categories = json.loads(json_str)
-
-            # Validate that returned categories are in our list
-            valid_categories = [cat for cat in matched_categories if cat in categories]
-            invalid_categories = [cat for cat in matched_categories if cat not in categories]
-
-            # Fail on invalid categories - no silent errors!
-            if invalid_categories:
-                error_msg = (
-                    f"LLM returned invalid categories!\n"
-                    f"Expected categories: {categories}\n"
-                    f"LLM returned: {matched_categories}\n"
-                    f"Invalid categories: {invalid_categories}\n"
-                    f"This indicates the LLM failed to follow instructions."
-                )
-                logger.error(error_msg)
-                raise LLMDataIntegrityError(
-                    error_msg,
-                    expected_count=len(categories),
-                    actual_count=len(matched_categories),
-                )
-
-            return valid_categories
-
-        except json.JSONDecodeError as e:
-            error_msg = (
-                f"Failed to parse LLM response as JSON!\n"
-                f"JSON error: {e}\n"
-                f"Attempted to parse: {json_str[:200]}\n"
-                f"Full response: {content[:200]}"
-            )
-            logger.error(error_msg)
-            raise LLMResponseError(error_msg, raw_response=content) from e
-
-    except Exception as e:
-        # Re-raise exceptions instead of masking with "Andere"
-        logger.error(f"Error classifying job: {e}")
-        raise
-
-
-def classify_jobs(
-    jobs: list[dict],
-    categories: list[str],
-    api_key: str | None = None,
-    model: str | None = None,
-    verbose: bool = True,
-    category_definitions: dict[str, str] | None = None,
-    http_client: HttpClient | None = None,
-    config_obj: Config | None = None,
-) -> list[dict]:
-    """
-    Classify multiple job descriptions
-
-    Args:
-        jobs: List of jobs with 'text' field
-        categories: List of category names (uses config if None, falls back to defaults)
-        api_key: OpenRouter API key (reads from OPENROUTER_API_KEY env var if None)
-        model: Model to use for classification (defaults to value from llm_config.yaml)
-        verbose: Print progress messages
-        category_definitions: Optional dict of category -> description mappings
-                             (loaded from categories.yaml if None)
-        http_client: HTTP client for making requests (optional)
-        config_obj: Config object (optional, uses global config if None)
-
-    Returns:
-        List of jobs with added 'categories' field
-    """
-    if http_client is None:
-        http_client = default_http_client
-    if config_obj is None:
-        config_obj = config
-
-    if model is None:
-        model = config_obj.get_required("llm.models.default")
-
-    if api_key is None:
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "OpenRouter API key not provided. "
-                "Set OPENROUTER_API_KEY environment variable or pass api_key parameter."
-            )
-
-    classified_jobs = []
-    max_chars = config_obj.get_required("processing.limits.job_text_single_job")
-
-    for idx, job in enumerate(jobs, 1):
-        logger.info(f"Classifying job {idx}/{len(jobs)}: {job.get('titel', 'N/A')}")
-
-        job_text = job.get("text", "")
-        original_len = len(job_text)
-        was_truncated = original_len > max_chars
-
-        # Fail on truncation - no silent errors!
-        if was_truncated:
-            job_id = job.get("refnr", "N/A")
-            logger.error(
-                f"      ❌ Job [{job_id}] text truncated: {original_len:,} → {max_chars:,} chars"
-            )
-            raise TruncationError(
-                job_id=str(job_id), original_length=original_len, truncated_length=max_chars
-            )
-
-        if not job_text:
-            job_id = job.get("refnr", "N/A")
-            error_msg = (
-                f"Job has no text content!\n"
-                f"Job title: {job.get('titel', 'N/A')}\n"
-                f"Job ID: {job_id}\n"
-                f"This indicates a data quality issue (extraction failed or job has no description).\n"
-                f"Cannot classify jobs without text content."
-            )
-            logger.error(error_msg)
-            raise EmptyJobContentError(error_msg, job_id=str(job_id))
-
-        matched_categories = classify_job_description(
-            job_text=job_text,
-            categories=categories,
-            api_key=api_key,
-            model=model,
-            category_definitions=category_definitions,
-            http_client=http_client,
-            config_obj=config_obj,
-        )
-
-        logger.info(f"  ✓ Categories: {', '.join(matched_categories)}")
-
-        job_copy = job.copy()
-        job_copy["categories"] = matched_categories
-        classified_jobs.append(job_copy)
-
-    return classified_jobs
-
-
 def classify_jobs_batch(
     jobs: list[dict],
     categories: list[str],
@@ -322,7 +101,6 @@ def classify_jobs_batch(
         extra_api_params: Additional parameters for the API request (e.g., {"reasoning": {"effort": "high"}})
         session: SearchSession to save LLM requests/responses
         category_definitions: Optional dict of category -> description mappings
-                             (loaded from categories.yaml if None)
         http_client: HTTP client for making requests (optional)
         config_obj: Config object (optional, uses global config if None)
 
